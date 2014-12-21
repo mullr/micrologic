@@ -127,29 +127,29 @@
 (def empty-state (state {} 0))
 
 (defn === [u v]
-  (fn [{:keys [s c]}]
+  (fn unify-goal [{:keys [s c]}]
     (if-let [s' (unify u v s)]
       (unit (state s' c))
       mzero)))
 
 (defn call-fresh [f]
-  (fn [{:keys [s c]}]
+  (fn fresh-goal [{:keys [s c]}]
     ((f (lvar c)) (state s (inc c)))))
 
 (defn ldisj [g1 g2]
-  (fn [state]
+  (fn disj-goal [state]
     (mplus (g1 state) (g2 state))))
 
 (defn lconj [g1 g2]
-  (fn [state]
+  (fn conj-goal [state]
     (bind (g1 state) g2)))
 
 
 ;;; aux macros
 
 (defmacro delay-goal [g]
-  `(fn [state#]
-     #(~g state#)))
+  `(fn delayed-goal-outer [state#]
+     (fn delayed-goal-inner [] (~g state#))))
 
 (defmacro lconj+
   ([g] `(delay-goal ~g))
