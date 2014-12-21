@@ -4,8 +4,8 @@
             [micro-logic.protocols :refer :all]
             ))
 
-(def a (lvar :a))
-(def b (lvar :b))
+(defonce a (lvar :a))
+(defonce b (lvar :b))
 
 (deftest micro-logic-tests
   (testing "walk"
@@ -31,7 +31,7 @@
   (testing "goals"
     (testing "basic"
       (are [g, s c] (= (stream-to-seq (g empty-state))
-                       (stream-to-seq (unit (state s c))))
+                       (stream-to-seq (stream (state s c))))
            (=== 1 1), {} 0
            (=== a 1), {a 1} 0
            (=== 1 a), {a 1} 0
