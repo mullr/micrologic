@@ -88,85 +88,37 @@
 
 
 
-(declare lcons lcar lcdr lcons?)
+;; # Streams
+
+(def mzero
+  (reify IStream
+    (mplus [$1 $2] $2)
+    (bind [$ g] $)
+    (pull [$] $)))
+
+(deftype StreamNode [current next]
+  IStream
+  (mplus [$1 $2] (StreamNode. current
+                              (mplus next $2)))
+  (bind [$ g] (mplus (g current)
+                     (bind next g)))
+  (pull [$] $))
 
 
-(def mzero nil)
-(defn unit [s] (lcons s nil))
-
-(extend-protocol IScheduleSeq
+(extend-protocol IStream
   clojure.lang.IFn
-  (mplus [$1 $2] #(mplus $2 ($1)))
-  (bind  [$ g]   #(bind ($) g))
+  (mplus [$1 $2] (fn mplus-fn [] (mplus $2 ($1))))
+  (bind [$ g] (fn bind-fn  [] (bind ($) g)))
+  (pull [$] (trampoline $)))
 
-  nil
-  (mplus [$1 $2] $2)
-  (bind  [$ g] mzero))
+(defn unit [s] (StreamNode. s mzero))
 
-
-;;; lcons
-
-(declare empty-lcons)
-(deftype LCons [car cdr]
-  clojure.lang.IPersistentCollection
-  (seq [self] self)
-  (cons [self o] (lcons o self))
-  (empty [self] empty-lcons)
-  (equiv [self o] (if (instance? LCons o)
-                    (and (= car (.car o))
-                         (= cdr (.cdr o)))
-                    false))
-
-  clojure.lang.Sequential
-  clojure.lang.ISeq
-  (first [self] car)
-  (next [self] (cond
-                 (instance? LCons cdr) cdr
-                 :default (list cdr)))
-  (more [self] (next self))
-
-  IUnifyTerms
-  (unify-terms [u v s]
-    (when (lcons? v)
-      (->> s
-        (unify (lcar u) (lcar v))
-        (unify (lcdr u) (lcdr v)))))
-
-  IScheduleSeq
-  (mplus [$1 $2] (lcons (lcar $1)
-                        (mplus (lcdr $1) $2)))
-  (bind  [$ g]   (mplus (g (lcar $))
-                        (bind (lcdr $) g))))
-
-
-(defn lcons [a b] (LCons. a b))
-(defn lcar [lc] (.car lc))
-(defn lcdr [lc] (.cdr lc))
-(defn lcons? [x] (instance? LCons x))
-
-(def empty-lcons (lcons (Object.) (Object.)))
-(defn lempty? [x] (= empty-lcons x))
-
-(defn print-lcons [lc ^java.io.Writer w]
-  (cond
-    (lempty? lc) (do)
-    (lempty? (lcdr lc)) (print-method (lcar lc) w)
-    (instance? LCons (lcdr lc)) (do
-                                  (print-method (lcar lc) w)
-                                  (.write w " ")
-                                  (recur (lcdr lc) w))
-    :default (do (print-method (lcar lc) w)
-                 (.write w " . ")
-                 (print-method (lcdr lc) w))))
-
-(defmethod print-method LCons [lc ^java.io.Writer w]
-  (.write w "(") (print-lcons lc w) (.write w ")"))
-
-(defn seq->lcons [s]
-  (if (seq s)
-    (lcons (first s) (seq->lcons (rest s)))
-    empty-lcons))
-
+(defn stream-to-seq [$]
+  (lazy-seq
+   (let [$' (pull $)]
+     (if (= mzero $')
+       '()
+       (cons (.current $') (stream-to-seq (.next $')))))))
 
 ;;; goal constructors
 
@@ -219,21 +171,11 @@
                    (fresh [~@(rest var-vec)]
                      ~@clauses)))))
 
-;;; stream utils
-
-(defn pull [$]
-  (if (fn? $)
-    (pull ($))
-    $))
-
-(defn stream-to-seq [$]
-  (lazy-seq
-   (let [$' (pull $)]
-     (if (nil? $')
-       '()
-       (cons (lcar $') (stream-to-seq (lcdr $')))))))
 
 ;;; reification
+
+(declare lcons lcar lcdr lcons?)
+
 
 (defn reify-name [n]
   (symbol (str "_." n)))
@@ -278,3 +220,65 @@
 
 (defmacro run [n query-var-vec & gs]
   `(take ~n (run* ~query-var-vec ~@gs)))
+
+
+;;; lcons
+
+(declare empty-lcons)
+(deftype LCons [car cdr]
+  clojure.lang.IPersistentCollection
+  (seq [self] self)
+  (cons [self o] (lcons o self))
+  (empty [self] empty-lcons)
+  (equiv [self o] (if (instance? LCons o)
+                    (and (= car (.car o))
+                         (= cdr (.cdr o)))
+                    false))
+
+  clojure.lang.Sequential
+  clojure.lang.ISeq
+  (first [self] car)
+  (next [self] (cond
+                 (instance? LCons cdr) cdr
+                 :default (list cdr)))
+  (more [self] (next self))
+
+  IUnifyTerms
+  (unify-terms [u v s]
+    (when (lcons? v)
+      (->> s
+        (unify (lcar u) (lcar v))
+        (unify (lcdr u) (lcdr v)))))
+
+  IDeepWalk
+  (deep-walk [v s] (LCons. (walk* car s)
+                           (walk* cdr s))))
+
+
+(defn lcons [a b] (LCons. a b))
+(defn lcar [lc] (.car lc))
+(defn lcdr [lc] (.cdr lc))
+(defn lcons? [x] (instance? LCons x))
+
+(def empty-lcons (lcons (Object.) (Object.)))
+(defn lempty? [x] (= empty-lcons x))
+
+(defn print-lcons [lc ^java.io.Writer w]
+  (cond
+    (lempty? lc) (do)
+    (lempty? (lcdr lc)) (print-method (lcar lc) w)
+    (instance? LCons (lcdr lc)) (do
+                                  (print-method (lcar lc) w)
+                                  (.write w " ")
+                                  (recur (lcdr lc) w))
+    :default (do (print-method (lcar lc) w)
+                 (.write w " . ")
+                 (print-method (lcdr lc) w))))
+
+(defmethod print-method LCons [lc ^java.io.Writer w]
+  (.write w "(") (print-lcons lc w) (.write w ")"))
+
+(defn seq->lcons [s]
+  (if (seq s)
+    (lcons (first s) (seq->lcons (rest s)))
+    empty-lcons))

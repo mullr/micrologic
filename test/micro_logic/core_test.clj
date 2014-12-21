@@ -30,8 +30,8 @@
 
   (testing "goals"
     (testing "basic"
-      (are [g, s c] (= (g empty-state)
-                       (unit (state s c)))
+      (are [g, s c] (= (stream-to-seq (g empty-state))
+                       (stream-to-seq (unit (state s c))))
            (=== 1 1), {} 0
            (=== a 1), {a 1} 0
            (=== 1 a), {a 1} 0
