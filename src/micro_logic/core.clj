@@ -8,7 +8,7 @@
 ;; - *g* A goal function. Given a substition map, produce a stream of substitution maps.
 ;; - *gc* Goal constructor function.
 ;; - *$* A stream: either a function, an lcons, or nil.
-
+;; - *st* A state: holds a substitution map and the id of the next unallocated lvar.
 
 ;; ## Logic Variables
 ;;
@@ -220,7 +220,7 @@
 
 ;; A *state* is a record containing a substitution map *s* and the id
 ;; of the next unbound logic variable *c*.
-(defrecord State [s c])
+(deftype State [s c])
 (defn state [s c] (State. s c))
 (def empty-state (state {} 0))
 
@@ -242,9 +242,9 @@
   bindings for lvars in u and v (using `unify`), or returns the empty
   stream if no such state exists. "
   [u v]
-  (fn unify-goal [{:keys [s c]}]
-    (if-let [s' (unify u v s)]
-      (stream (state s' c))
+  (fn unify-goal [st]
+    (if-let [s' (unify u v (.s st))]
+      (stream (state s' (.c st)))
       empty-stream)))
 
 (defn call-fresh
@@ -252,23 +252,24 @@
   goal that allocates a new lvar from its state parameter and passes
   it to *gc*."
   [gc]
-  (fn fresh-goal [{:keys [s c]}]
-    ((gc (lvar c)) (state s (inc c)))))
+  (fn fresh-goal [st]
+    (let [c (.c st)]
+     ((gc (lvar c)) (state (.s st) (inc c))))))
 
 (defn ldisj
   "Logical disjuction ('or'). Construct a new goal that succeeds
   whenever *g1* or *g2* succeed. `merge-streams` is used on each
   goal's output to ensure fair scheduling between the two."
   [g1 g2]
-  (fn disj-goal [state]
-    (merge-streams (g1 state) (g2 state))))
+  (fn disj-goal [st]
+    (merge-streams (g1 st) (g2 st))))
 
 (defn lconj
   "Logical conjunction ('and'). Construct a new goal that succeeds
   when both *g1* and *g2* succeed."
   [g1 g2]
-  (fn conj-goal [state]
-    (mapcat-stream (g1 state) g2)))
+  (fn conj-goal [st]
+    (mapcat-stream (g1 st) g2)))
 
 
 
@@ -287,8 +288,8 @@
 
   This is useful for defining recursive goals."
   [g]
-  `(fn delayed-goal-outer [state#]
-     (fn delayed-goal-inner [] (~g state#))))
+  `(fn delayed-goal-outer [st#]
+     (fn delayed-goal-inner [] (~g st#))))
 
 (defmacro ldisj+
   "Extended version of the `ldisj` function. This one handles multiple
@@ -369,8 +370,8 @@
   (deep-walk [v s] v))
 
 
-(defn reify-state-first-var [{:keys [s c]}]
-  (let [v (walk* (lvar 0) s)]
+(defn reify-state-first-var [st]
+  (let [v (walk* (lvar 0) (.s st))]
     (walk* v (reify-s v {}))))
 
 (defn mk-reify [state-seq]
