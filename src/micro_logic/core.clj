@@ -57,8 +57,25 @@
 
 ;;; lcons
 
+(declare empty-lcons)
+(deftype LCons [car cdr]
+  clojure.lang.IPersistentCollection
+  (seq [self] self)
+  (cons [self o] (lcons o self))
+  (empty [self] empty-lcons)
+  (equiv [self o] (if (instance? LCons o)
+                    (and (= car (.car o))
+                         (= cdr (.cdr o)))
+                    false))
 
-(defrecord LCons [car cdr]
+  clojure.lang.Sequential
+  clojure.lang.ISeq
+  (first [self] car)
+  (next [self] (cond
+                 (instance? LCons cdr) cdr
+                 :default (list cdr)))
+  (more [self] (next self))
+
   IUnifyTerms
   (unify-terms [u v s]
     (when (lcons? v)
@@ -72,18 +89,34 @@
   (bind  [$ g]   (mplus (g (lcar $))
                         (bind (lcdr $) g))))
 
+
 (defn lcons [a b] (LCons. a b))
-(defn lcar [lc] (:car lc))
-(defn lcdr [lc] (:cdr lc))
-(defn lcons? [x] (= LCons (class x)))
+(defn lcar [lc] (.car lc))
+(defn lcdr [lc] (.cdr lc))
+(defn lcons? [x] (instance? LCons x))
+
+(def empty-lcons (lcons (Object.) (Object.)))
+(defn lempty? [x] (= empty-lcons x))
+
+(defn print-lcons [lc ^java.io.Writer w]
+  (cond
+    (lempty? lc) (do)
+    (lempty? (lcdr lc)) (print-method (lcar lc) w)
+    (instance? LCons (lcdr lc)) (do
+                                  (print-method (lcar lc) w)
+                                  (.write w " ")
+                                  (recur (lcdr lc) w))
+    :default (do (print-method (lcar lc) w)
+                 (.write w " . ")
+                 (print-method (lcdr lc) w))))
 
 (defmethod print-method LCons [lc ^java.io.Writer w]
-  (.write w "(") (print-method (lcar lc) w) (.write w " . ") (print-method (lcdr lc) w) (.write w ")"))
+  (.write w "(") (print-lcons lc w) (.write w ")"))
 
 (defn seq->lcons [s]
   (if (seq s)
     (lcons (first s) (seq->lcons (rest s)))
-    nil))
+    empty-lcons))
 
 
 ;;; goal constructors
