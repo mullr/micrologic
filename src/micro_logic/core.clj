@@ -285,3 +285,39 @@
   (if (seq s)
     (lcons (first s) (seq->lcons (rest s)))
     empty-lcons))
+
+
+;;; extended goals
+
+(defn conso [first rest seq]
+  (=== (lcons first rest) seq))
+
+(defn firsto [first seq]
+  (fresh [rest]
+    (conso first rest seq)))
+
+(defn resto [rest seq]
+  (fresh [first]
+    (conso first rest seq)))
+
+(defn emptyo [x]
+  (=== empty-lcons x))
+
+(defn nilo [x]
+  (=== nil x))
+
+(defn repeato [n x]
+  (conde
+    [(emptyo x)]
+    [(fresh [rest]
+       (conso n rest x)
+       (repeato n rest))]))
+
+(defn iterateo [gc x]
+  (conde
+    [(emptyo x)]
+    [(fresh [val rest]
+       (gc val)
+       (conso val rest x)
+       (iterateo gc rest))]))
+
