@@ -49,7 +49,7 @@
   ;; substitution map.  In this case, the variable itself is returned,
   ;; indicating that the variable is currently unbound.
   (walk [u s] (if-let [val (get s u)]
-                (walk val s)
+                (recur val s)
                 u))
   Object
   (walk [u s] u)
