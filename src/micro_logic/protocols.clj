@@ -13,3 +13,6 @@
   (merge-streams [$1 $2])
   (mapcat-stream [$ g])
   (realize-stream-head [$]))
+
+(defprotocol IReifySubstitution
+  (reify-s* [v s]))

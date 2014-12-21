@@ -341,20 +341,21 @@
 
 ;;; reification
 
-(declare lcons lcar lcdr lcons?)
-
-
 (defn reify-name [n]
   (symbol (str "_." n)))
 
 (defn reify-s [v s]
-  (let [v' (walk v s)]
-    (cond
-      (lvar? v') (let [n (reify-name (count s))]
-                   (assoc s v' n))
-      (lcons? v') (reify-s (lcdr v')
-                           (reify-s (lcar v') s))
-      :default s)))
+  (reify-s* (walk v s) s))
+
+
+(extend-protocol IReifySubstitution
+  LVar
+  (reify-s* [v s] (let [n (reify-name (count s))]
+                    (assoc s v n)))
+
+  Object
+  (reify-s* [v s] s))
+
 
 (defn walk* [v s]
   (let [v' (walk v s)]
@@ -398,7 +399,7 @@
 (deftype LCons [car cdr]
   clojure.lang.IPersistentCollection
   (seq [self] self)
-  (cons [self o] (lcons o self))
+  (cons [self o] (LCons. o self))
   (empty [self] empty-lcons)
   (equiv [self o] (if (instance? LCons o)
                     (and (= car (.car o))
@@ -419,6 +420,9 @@
       (->> s
         (unify (lcar u) (lcar v))
         (unify (lcdr u) (lcdr v)))))
+
+  IReifySubstitution
+  (reify-s* [v s] (reify-s cdr (reify-s car s)))
 
   IDeepWalk
   (deep-walk [v s] (LCons. (walk* car s)
