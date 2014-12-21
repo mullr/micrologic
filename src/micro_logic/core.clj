@@ -1,17 +1,53 @@
 (ns micro-logic.core
   (:require [micro-logic.protocols :refer :all]))
 
-;;; Variable defs
-;;; c: lvar id
-;;; s: substitution map
-;;; u, v: either literal values or logic variables.
+;; ## Common variables
+;; - *c* The id of an lvar
+;; - *s* A substitution map. Keys are lvars, values are either lvars or values.
+;; - *u, v* Either an lvar or a literal value. Unification terms, more precisely.
+;; - *g* A goal function. Given a substition map, produce a stream of substitution maps.
+;; - *gc* Goal constructor function.
+;; - *$* A stream: either a function, an lcons, or nil.
 
+
+;; ## Logic Variables
+;;
+;; Logic variables (lvars for short) are the unknown items that will
+;; be given a value by the unifier. Each of them has an id (*c*); this
+;; is a number which is assigned when a new variable is allocated by
+;; (fresh). The interpreter state stores the next id to use.
 (defrecord LVar [c])
 (defn lvar [c] (LVar. c))
-(defn lvar? [x] (= LVar (class x)))
+(defn lvar? [x] (instance? LVar x))
 
+
+;; ## Substitutions and Walking
+;;
+;; A substitution map (*s*) gives mappings from logic variables to
+;; their values.
+;;
+;; To see what value an lvar is bound to in a given substitution map,
+;; use `(walk u s)`. (*u* is an lvar or a value) Supposing *a* and *b*
+;; are lvars; in this simple case, `(walk a {a 1})` returns `1`.
+;;
+;; Minikanren derivatives (including this one) use *triangular*
+;; substitutions, which means that an lvar may map to another lvar.
+;; Walk will follow these variable references until a value is
+;; reached. For example, `(walk a {a b, b 2})` returns `2`.
+;;
+;; The observant reader may note that it is easy to construct a
+;; substitution map with a loop in it: `(walk a {a b, b a})` will not
+;; terminate. This case may be handled (but is not, in this
+;; implementation) with an *occurs-check* function call when adding
+;; new substitutions.
+;;
+;; We implement this in clojure with the IWalk protocol, since it is
+;; polymorphic on the type of *u*.
 (extend-protocol IWalk
   LVar
+  ;; When walking for a variable, it may not be present in the
+  ;; substitution map.  In this case, the variable itself is returned,
+  ;; indicating that the variable is currently unbound.
   (walk [u s] (if-let [val (get s u)]
                 (walk val s)
                 u))
@@ -21,7 +57,13 @@
   nil
   (walk [u s] nil))
 
-(defn unify [u v s]
+;; # Unification
+
+(defn unify
+  "Given two terms *u* and *v*, and an existing substitution map *s*,
+  unify produces a new substitution map with mappings that will make u
+  and v equal."
+  [u v s]
   (let [u (walk u s),  v (walk v s)
         ulv (lvar? u), vlv (lvar? v)]
     (cond
@@ -31,7 +73,14 @@
       (= u v) s
       :default (unify-terms u v s))))
 
-
+;; This unifier is extensible, in the spirit of core.logic. Only
+;; unification on basic types is directly implemented here. By
+;; extending the IUnifyTerms protocol, special unification logic may
+;; be supplied for any data type.
+;;
+;; A *term* is, somewhat circularly, something you can pass to the unifier.
+;; this includes lvars, regular values, and values of any type to which
+;; you have extended IUnifyTerms.
 (extend-protocol IUnifyTerms
   Object
   (unify-terms [u v s]
