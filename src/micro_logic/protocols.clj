@@ -3,6 +3,8 @@
 (defprotocol IWalk
   (walk [u s]))
 
+(defprotocol IDeepWalk
+  (deep-walk [v s]))
 
 (defprotocol IUnifyTerms
   (unify-terms [u v s]))

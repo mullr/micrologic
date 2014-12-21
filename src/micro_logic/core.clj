@@ -191,16 +191,19 @@
 
 (defn walk* [v s]
   (let [v' (walk v s)]
-    (cond
-      (lvar? v') v'
-      (lcons? v') (lcons (walk* (lcar v') s)
-                         (walk* (lcdr v') s))
-      :default v')))
+    (deep-walk v' s)))
+
+(extend-protocol IDeepWalk
+  LVar
+  (deep-walk [v s] v)
+
+  Object
+  (deep-walk [v s] v))
+
 
 (defn reify-state-first-var [{:keys [s c]}]
   (let [v (walk* (lvar 0) s)]
-    (walk* v (reify-s v {}))
-    ))
+    (walk* v (reify-s v {}))))
 
 (defn mk-reify [state-seq]
   (map reify-state-first-var state-seq))
