@@ -10,6 +10,6 @@
   (unify-terms [u v s]))
 
 (defprotocol IStream
-  (mplus [$1 $2])
-  (bind [$ g])
-  (pull [$]))
+  (merge-streams [$1 $2])
+  (mapcat-stream [$ g])
+  (realize-stream-head [$]))

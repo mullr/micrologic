@@ -89,82 +89,249 @@
 
 
 ;; # Streams
-
-(def mzero
+;;
+;; The lazy stream mechanism is one of the really interesting parts
+;; about miniKanren. It's different from regular scheme linked lists
+;; or even clojure's lazy sequences - it lets you schedule work fairly
+;; between different branches of the search space, each of which is
+;; represented by a stream.
+;;
+;; Unlike a clojure seq, a stream may be in one of three states:
+;;
+;; - mature (head realized)
+;; - immature (head unrealized)
+;; - empty
+;;
+;; The immature state indicates that there is some work to be done to
+;; either compute the head of the stream or to determine if it's
+;; empty.  Contrast this with clojure lazy sequences, where the act of
+;; getting the rest of a sequence is what triggers computation. This
+;; difference is subtle but important, and it allows the interleaved
+;; scheduling to work.
+;;
+;; ### Things you can do with a stream
+;; - Merge two of them together with `merge-streams`
+;; - Map a function over it with `mapcat-stream`, as long as that
+;;   function itself produces streams.
+;; - Realize its head with `realize-stream-head`. This will transition it
+;;   to either immature or empty, performing any necessary work
+;;   along the way.
+(def empty-stream
   (reify IStream
-    (mplus [$1 $2] $2)
-    (bind [$ g] $)
-    (pull [$] $)))
+    (merge-streams [$1 $2] $2)
+    (mapcat-stream [$ g] $)
+    (realize-stream-head [$] $)))
 
-(deftype StreamNode [current next]
+;; ### Mature streams (StreamNode)
+;;
+;; A head-realized streams is represented by an instance of StreamNode.
+;; This is kind of like a linked list: `head` is the realized value that
+;; can be taken from the stream, and `next` is the stream which follows.
+;; But these streams are polymorphic; `next` isn't necessarily a StreamNode,
+;; just some other thing which extends the IStream protocol.
+;;
+;; Note that, if we have only StreamNodes (i.e. fully realized
+;; streams), merge-streams is equivalent to `concat` and
+;; `mapcat-stream` to `mapcat`.
+(deftype StreamNode [head next]
   IStream
-  (mplus [$1 $2] (StreamNode. current
-                              (mplus next $2)))
-  (bind [$ g] (mplus (g current)
-                     (bind next g)))
-  (pull [$] $))
+  (merge-streams [$1 $2] (StreamNode. head
+                                      (merge-streams next $2)))
+  (mapcat-stream [$ g] (merge-streams (g head)
+                                      (mapcat-stream next g)))
+  (realize-stream-head [$] $))
 
-
+;; ### Immature streams (IFn)
+;;
+;; An immature (head-unrealized) stream is represented by a thunk (a
+;; function of no arguments).
+;;
+;; Executing the thunk does one unit of work and yields back a stream. This may
+;; in turn be a function, so you might have to keep calling the returned function
+;; many times until you get down to a realized value. This is exactly what
+;; `realize-stream-head` does here, by way of `trampoline`.
+;;
+;; #### Merging
+;; Merging is the tricky part - this is what makes the search
+;; interleaving. Let's examine the definition:
+;;
+;;     clojure.lang.IFn
+;;     (merge-streams [$1 $2] #(merge-streams $2 ($1)))
+;;
+;; Working from the inside out: we know that $1 is a function because
+;; we're extending IStream onto IFn; calling it will perform one 'step
+;; of computation', whatever that might be. It returns a stream.
+;; Then we merge that stream with $2, the second parameter of this merge operation,
+;; *but the order is reversed*.
+;;
+;; Finally, the above operation is all wrapped in a thunk. So we end up with a
+;; function that:
+;;
+;; - performs the work for the first thing you constructed it with
+;; - returns a new stream, putting the second thing you constructed it
+;;   with at the head.
+;;
+;; An imaginary repl session may make this clearer:
+;;
+;;     > (def a #(stream (+ 1 1)))
+;;     > (def b #(stream (+ 10 20))
+;;     > (def s (merge-streams a b))
+;;     #(merge-streams #(stream (+ 10 20) (#(stream (+ 1 1))))
+;;
+;;     > (def s' (s))
+;;     #(merge-streams (stream 2) (#(stream (+ 10 20))))
+;;
+;;     > (def s'' (s'))
+;;     (StreamNode. 2 (StreamNode. 30))
+;;
+;; #### Mapping
+;; mapcat-stream is somewhat simpler.
+;;
+;;     clojure.lang.IFn
+;;     (mapcat-stream [$ g] #(mapcat-stream ($) g))
+;;
+;; The basic concept here is pretty straightforward: make a new thunk which,
+;; when executed later, will do some work and then mapcat `g` over the result.
+;;
+;; TODO: explain why this needs to be wrapped in a thunk
 (extend-protocol IStream
   clojure.lang.IFn
-  (mplus [$1 $2] (fn mplus-fn [] (mplus $2 ($1))))
-  (bind [$ g] (fn bind-fn  [] (bind ($) g)))
-  (pull [$] (trampoline $)))
+  (merge-streams [$1 $2] #(merge-streams $2 ($1)))
+  (mapcat-stream [$ g] #(mapcat-stream ($) g))
+  (realize-stream-head [$] (trampoline $)))
 
-(defn unit [s] (StreamNode. s mzero))
+(defn stream [s] (StreamNode. s empty-stream))
 
+;; #### Seq conversion
+;;
+;; We of course like to deal with lazy sequences in clojure, and it's
+;; fairly straightforward to convert it. Running realize-stream-head
+;; bounces the trampoline until a result comes out, at which point we
+;; can give it to the caller.
 (defn stream-to-seq [$]
   (lazy-seq
-   (let [$' (pull $)]
-     (if (= mzero $')
+   (let [$' (realize-stream-head $)]
+     (if (= empty-stream $')
        '()
-       (cons (.current $') (stream-to-seq (.next $')))))))
+       (cons (.head $') (stream-to-seq (.next $')))))))
 
-;;; goal constructors
 
+;; ## Goals
+
+;; A *state* is a record containing a substitution map *s* and the id
+;; of the next unbound logic variable *c*.
 (defrecord State [s c])
 (defn state [s c] (State. s c))
 (def empty-state (state {} 0))
 
-(defn === [u v]
+;; A goal is a function which, given a state, returns a stream of
+;; states. Conceptually, it encodes some constraints. Give it an input
+;; state, and it will give you one output state for each way it can
+;; meet those constraints.
+
+;; Rather than dealing with goals directly, we usually use
+;; *goal constructors*; given some parameter (usually a unification term or
+;; another goal), they will return a goal function which closes over
+;; it.
+
+;; ### Basic goal constructors
+
+(defn ===
+  "Given two terms u and v, create a goal that will unify them. The
+  goal takes an existing state and returns either a state with
+  bindings for lvars in u and v (using `unify`), or returns the empty
+  stream if no such state exists. "
+  [u v]
   (fn unify-goal [{:keys [s c]}]
     (if-let [s' (unify u v s)]
-      (unit (state s' c))
-      mzero)))
+      (stream (state s' c))
+      empty-stream)))
 
-(defn call-fresh [f]
+(defn call-fresh
+  "Wrap the goal constructor *gc*, a function of a single lvar, in a
+  goal that allocates a new lvar from its state parameter and passes
+  it to *gc*."
+  [gc]
   (fn fresh-goal [{:keys [s c]}]
-    ((f (lvar c)) (state s (inc c)))))
+    ((gc (lvar c)) (state s (inc c)))))
 
-(defn ldisj [g1 g2]
+(defn ldisj
+  "Logical disjuction ('or'). Construct a new goal that succeeds
+  whenever *g1* or *g2* succeed. `merge-streams` is used on each
+  goal's output to ensure fair scheduling between the two."
+  [g1 g2]
   (fn disj-goal [state]
-    (mplus (g1 state) (g2 state))))
+    (merge-streams (g1 state) (g2 state))))
 
-(defn lconj [g1 g2]
+(defn lconj
+  "Logical conjunction ('and'). Construct a new goal that succeeds
+  when both *g1* and *g2* succeed."
+  [g1 g2]
   (fn conj-goal [state]
-    (bind (g1 state) g2)))
+    (mapcat-stream (g1 state) g2)))
 
 
-;;; aux macros
 
-(defmacro delay-goal [g]
+;; ## Auxilliary macros
+;;
+;; At this point, we have defined everything we need to do logic
+;; programming.  But it's very inconvenient; some utility macros make
+;; the task more bearable.
+
+(defmacro delay-goal
+  "Wrap the given goal in a new one which, when executed, simply
+  returns a thunk. Recall that goal functions return streams, and that
+  a function is a valid kind of stream (an immature stream). The goal
+  will finally be executed when the thunk is evaluated by
+  realize-stream-head.
+
+  This is useful for defining recursive goals."
+  [g]
   `(fn delayed-goal-outer [state#]
      (fn delayed-goal-inner [] (~g state#))))
 
-(defmacro lconj+
-  ([g] `(delay-goal ~g))
-  ([g & gs] `(lconj (delay-goal ~g) (lconj+ ~@gs))))
-
 (defmacro ldisj+
+  "Extended version of the `ldisj` function. This one handles multiple
+  arguments, instead of just two. It also automatically wraps each goal
+  with `delay-goal`, so you don't need to worry about adding them yourself.
+
+  (This does have a performance cost, but speed is not the point of this port)"
   ([g] `(delay-goal ~g))
   ([g & gs] `(ldisj (delay-goal ~g) (ldisj+ ~@gs))))
 
-(defmacro conde [& clauses]
+(defmacro lconj+
+  "Like `ldisj+`, but for `lconj`."
+  ([g] `(delay-goal ~g))
+  ([g & gs] `(lconj (delay-goal ~g) (lconj+ ~@gs))))
+
+
+(defmacro conde
+  "The regular miniKanren `conde` form, a disjunction of
+  conjunctions. Supposing that *a* and *b* are lvars,
+
+      (conde
+        [(=== a 1) (=== b 2)]
+        [(=== a 7) (=== b 12)})
+
+  will produce two results: {a 1, b 2} and {a 7, b 12}."
+  [& clauses]
   `(ldisj+ ~@(map (fn [clause]
                     `(lconj+ ~@clause))
                   clauses)))
 
-(defmacro fresh [var-vec & clauses]
+(defmacro fresh
+  "Provide a more convenient syntax for `call-fresh`. `fresh` lets you
+  declare multiple logic variables and once, and it takes care of the
+  function declaration mechanics for you.
+
+  The body of fresh is passed to `lconj+`, a logical 'and'.
+
+      (fresh [x y]
+        (=== x 1)
+        (=== y 2))
+
+  Will give one result, {x 1, y 2}."
+  [var-vec & clauses]
   (if (empty? var-vec)
     `(lconj+ ~@clauses)
     `(call-fresh (fn [~(first var-vec)]
