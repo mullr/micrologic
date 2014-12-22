@@ -20,7 +20,14 @@ ideas, because of its simplicity.
   [micro-logic.protocols :refer :all]
   [micro-logic.core :refer :all])
 
-(run 1 [q] (conde [(===
+(run 1 [q]
+  (conde
+    [(=== q 1)]
+    [(=== q 2)]))
+
+ => (1 2)
+ ```
+
 
 
 ## Differences from microKanren
