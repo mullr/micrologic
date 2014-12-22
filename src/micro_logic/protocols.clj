@@ -16,3 +16,7 @@
 
 (defprotocol IReifySubstitution
   (reify-s* [v s]))
+
+(defprotocol ILList
+  (lfirst [l])
+  (lrest [l]))
