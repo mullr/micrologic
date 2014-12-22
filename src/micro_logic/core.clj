@@ -220,7 +220,7 @@
 
 ;; A *state* is a record containing a substitution map *s* and the id
 ;; of the next unbound logic variable *c*.
-(deftype State [s c])
+(defrecord State [s c])
 (defn state [s c] (State. s c))
 (def empty-state (state {} 0))
 
