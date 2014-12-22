@@ -43,11 +43,12 @@
 ;;
 ;; We implement this in clojure with the IWalk protocol, since it is
 ;; polymorphic on the type of *u*.
+;;
+;; Note: when walking for a variable, it may not be present in the
+;; substitution map.  In this case, the variable itself is returned,
+;; indicating that the variable is currently unbound.
 (extend-protocol IWalk
   LVar
-  ;; When walking for a variable, it may not be present in the
-  ;; substitution map.  In this case, the variable itself is returned,
-  ;; indicating that the variable is currently unbound.
   (walk [u s] (if-let [val (get s u)]
                 (recur val s)
                 u))
