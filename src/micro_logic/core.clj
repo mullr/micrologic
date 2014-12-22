@@ -340,8 +340,10 @@
                      ~@clauses)))))
 
 
-;;; reification
+;; ## Reificiation
 
+;; In miniKanren, reification refers to extracting the desired values
+;; from the stream of states you get as a result of executing a goal.
 (defn reify-name [n]
   (symbol (str "_." n)))
 
@@ -374,8 +376,9 @@
   (let [v (walk* (lvar 0) (.s st))]
     (walk* v (reify-s v {}))))
 
-(defn mk-reify [state-seq]
-  (map reify-state-first-var state-seq))
+(defn reify-state-lvar [st lv]
+  (let [v (walk* lv (.s st))]
+    (walk* v (reify-s v {}))))
 
 
 ;;; run interface
@@ -383,12 +386,16 @@
 (defn call-empty-state [g]
   (g empty-state))
 
+(defmacro basic-run*
+  "reify-fn: state -> thing you want"
+  [reify-fn query-var-vec & gs]
+  `(->> (fresh [~@query-var-vec] ~@gs)
+     call-empty-state
+     stream-to-seq
+     (map ~reify-fn)))
+
 (defmacro run* [query-var-vec & gs]
-  `(mk-reify
-    (stream-to-seq
-     (call-empty-state
-      (fresh [~@query-var-vec]
-        ~@gs)))))
+  `(basic-run* reify-state-first-var [~@query-var-vec] ~@gs))
 
 (defmacro run [n query-var-vec & gs]
   `(take ~n (run* ~query-var-vec ~@gs)))
