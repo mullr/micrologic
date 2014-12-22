@@ -1,3 +1,6 @@
+---
+layout: index
+---
 # micro-logic
 
 An idiomatic, obsessivly well-documented Clojure implementation of
