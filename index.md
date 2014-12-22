@@ -1,7 +1,9 @@
 ---
-layout: index
+title: micro-logic
+layout: main
+forkme_url: https://github.com/hopsoft/micro-logic
 ---
-# micro-logic
+# micro-logic {#micro-logic}
 
 An idiomatic, obsessivly well-documented Clojure implementation of
 microKanren:
@@ -16,9 +18,9 @@ It may also be a suitable base for experimental logic programming
 ideas, because of its simplicity.
 
 
-## Usage
+## Usage {#usage}
 
-```clojure
+{% endhighlight %}clojure
 (ns my.ns
   [micro-logic.protocols :refer :all]
   [micro-logic.core :refer :all])
@@ -74,3 +76,8 @@ Copyright © 2014 Russell Mull
 
 Distributed under the Eclipse Public License either version 1.0 or (at
 your option) any later version.
+
+---
+
+{% include forkme.html %}
+{% include disqus.html %}
