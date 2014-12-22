@@ -63,15 +63,15 @@ Many names have changed to be more clojure-like:
 
 ## Differences from core.logic
 
-core.logic | microLogic
------------------------
-mplus      | merge-streams
-bind       | mapcat-stream
-pull       | realize-stream-head
-mzero      | empty-stream
-unit       | stream
-==         | ===
-LCons      | LListCell
+|core.logic | microLogic           |
+|-----------|----------------------|
+|mplus      | merge-streams        |
+|bind       | mapcat-stream        |
+|pull       | realize-stream-head  |
+|mzero      | empty-stream         |
+|unit       | stream               |
+|==         | ===                  |
+|LCons      | LListCell            |
 
 
 
