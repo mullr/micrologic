@@ -1,17 +1,20 @@
 # micro-logic
 
-An idiomatic, obsessivly well-documented Clojure implementation of
-microKanren:
-http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf
+A literate Clojure implementation of microKanren. Read the annotated source
+at http://mullr.github.io/micrologic/literate.html.
+
+This is largely based on microKanren, an even more minimalistic version of miniKanren.
+- http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf
+
+
 
 microLogic can be thought of as the core.logic parallel of
 microKanren. It has simplified verisons of some of the same concepts,
 namely the extensible unifier. By reading the code and documentation,
 you can understand more about how core.logic works.
 
-It may also be a suitable base for experimental logic programming
-ideas, because of its simplicity.
-
+It may also be a suitable base for experimenting with new logic
+programming ideas, because of its simplicity.
 
 ## Usage
 
@@ -71,6 +74,13 @@ Many names have changed to be more clojure-like:
 |LCons      | LListCell            |
 
 
+
+## References
+
+- The microKanren paoper:http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf
+- The microKanren scheme implementation: https://github.com/jasonhemann/microKanren
+- core.logic, Clojure's real miniKanren implementation: https://github.com/clojure/core.logic
+- The Will Byrd's dissertation on miniKanren: https://github.com/webyrd/dissertation-single-spaced/raw/master/thesis.pdf
 
 ## License
 
