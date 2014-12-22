@@ -20,13 +20,6 @@ ideas, because of its simplicity.
 
 ## Usage {#usage}
 
-{% endhighlight %}clojure
-(ns my.ns
-  [micro-logic.protocols :refer :all]
-  [micro-logic.core :refer :all])
-
-(run 1 [q] (conde [(===
-
 
 ## Differences from microKanren
 
