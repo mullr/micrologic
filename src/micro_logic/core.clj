@@ -1,3 +1,53 @@
+;; # microLogic
+;; A literate Clojure implementation of microKanren.
+;;
+;; It may also be a suitable base for experimenting with new logic
+;; programming ideas, because of its simplicity.
+;;
+;; ## Differences from microKanren
+;; Polymorphic dispatch via protocols is used in place of `(cond)` with
+;; type checks, where possible.
+;;
+;; Clojure-native datatypes are used where appropriate
+;; - The substitution map is a clojure map instead of an alist
+;; - There is an LVar defrecrord, instead of using a vector of c
+;; - We have an explicit StreamNode data type, rather building on the
+;;   built-in list type
+;; - Clojure doesn't allow improper lists; LListCell is a linked list
+;;   which does.
+;;
+;; Many names have changed to be more clojure-like:
+;;
+;;     |uKanren | microLogic          |
+;;     |--------|---------------------|
+;;     |mplus   | merge-streams       |
+;;     |bind    | mapcat-stream       |
+;;     |pull    | realize-stream-head |
+;;     |mzero   | empty-stream        |
+;;     |unit    | stream              |
+;;     |Zzz     | delay-goal          |
+;;     |conj    | lconj               |
+;;     |disj    | ldisj               |
+;;     |==      | ===                 |
+;;
+;; ## Differences from core.logic
+;;     |core.logic | microLogic           |
+;;     |-----------|----------------------|
+;;     |mplus      | merge-streams        |
+;;     |bind       | mapcat-stream        |
+;;     |pull       | realize-stream-head  |
+;;     |mzero      | empty-stream         |
+;;     |unit       | stream               |
+;;     |==         | ===                  |
+;;     |LCons      | LListCell            |
+;;
+;; ## References
+;; - This is largely based on [microKanren](http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf), a minimal version of miniKanren
+;; - The microKanren [scheme implementation](https://github.com/jasonhemann/microKanren)
+;; - [core.logic](https://github.com/clojure/core.logic), Clojure's real miniKanren implementation
+;; - Will Byrd's [dissertation on miniKanren](https://github.com/webyrd/dissertation-single-spaced/raw/master/thesis.pdf)
+
+
 (ns micro-logic.core
   (:require [micro-logic.protocols :refer :all]))
 
