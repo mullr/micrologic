@@ -1,11 +1,12 @@
 (ns micro-logic.core-test
   (:require [clojure.test :refer :all]
-            [micro-logic.core :refer :all]
             [micro-logic.protocols :refer :all]
+            [micro-logic.core :refer :all]
+            [micro-logic.sequence :refer :all]
             ))
 
-(defonce a (lvar :a))
-(defonce b (lvar :b))
+(def a (lvar :a))
+(def b (lvar :b))
 
 (deftest micro-logic-tests
   (testing "walk"
