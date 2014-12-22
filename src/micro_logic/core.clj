@@ -63,27 +63,40 @@
 (defn unify
   "Given two terms *u* and *v*, and an existing substitution map *s*,
   unify produces a new substitution map with mappings that will make u
-  and v equal."
+  and v equal.
+
+  This unifier is extensible, in the spirit of core.logic. Only
+  unification on basic types is directly implemented here. By
+  extending the IUnifyTerms protocol, special unification logic may be
+  supplied for any data type.
+
+  A *term* is, somewhat circularly, something you can pass to the
+  unifier.  this includes lvars, regular values, and values of any
+  type to which you have extended IUnifyTerms. "
   [u v s]
-  (let [u (walk u s),  v (walk v s)
-        ulv (lvar? u), vlv (lvar? v)]
+  (let [u (walk u s),        v (walk v s)
+        u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
     (cond
-      (and ulv vlv (= u v)) s
-      ulv (assoc s u v)
-      vlv (assoc s v u)
-      (= u v) s
+      ;; Unifying two lvars adds no information
+      (and u-is-lvar v-is-lvar (= u v)) s
+
+      ;; Unifying an lvar with some other value creates a new substitution
+      u-is-lvar (assoc s u v)
+      v-is-lvar (assoc s v u)
+
+      ;; Unifying two non-lvars is delegated to the polymorphic
+      ;; `unify-terms` function.
       :default (unify-terms u v s))))
 
-;; This unifier is extensible, in the spirit of core.logic. Only
-;; unification on basic types is directly implemented here. By
-;; extending the IUnifyTerms protocol, special unification logic may
-;; be supplied for any data type.
-;;
-;; A *term* is, somewhat circularly, something you can pass to the unifier.
-;; this includes lvars, regular values, and values of any type to which
-;; you have extended IUnifyTerms.
+;; If there is no more specific definition, unificiation between two
+;; values should at least succeed if they are equal. Return nil if
+;; they are not, indiciating that the terms cannot be unified.
 (extend-protocol IUnifyTerms
   Object
+  (unify-terms [u v s]
+    (if (= u v) s))
+
+  nil
   (unify-terms [u v s]
     (if (= u v) s)))
 
