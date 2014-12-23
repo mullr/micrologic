@@ -195,7 +195,8 @@
   (reify IStream
     (merge-streams [stream-1 stream-2] stream-2)
     (mapcat-stream [stream g] stream)
-    (realize-stream-head [stream] stream)))
+    (realize-stream-head [stream] stream)
+    (stream-to-seq [stream] '())))
 
 ;; ### Mature streams (StreamNode)
 ;;
@@ -214,7 +215,9 @@
                                       (merge-streams next stream-2)))
   (mapcat-stream [stream g] (merge-streams (g head)
                                       (mapcat-stream next g)))
-  (realize-stream-head [stream] stream))
+  (realize-stream-head [stream] stream)
+
+  (stream-to-seq [stream] (lazy-seq (cons head (stream-to-seq next)))))
 
 ;; ### Immature streams (IFn)
 ;;
@@ -273,22 +276,10 @@
   clojure.lang.IFn
   (merge-streams [stream-1 stream-2] #(merge-streams stream-2 (stream-1)))
   (mapcat-stream [stream g] #(mapcat-stream (stream) g))
-  (realize-stream-head [stream] (trampoline stream)))
+  (realize-stream-head [stream] (trampoline stream))
+  (stream-to-seq [stream] (stream-to-seq (realize-stream-head stream))))
 
 (defn make-stream [s] (StreamNode. s empty-stream))
-
-;; #### Seq conversion
-;;
-;; We of course like to deal with lazy sequences in clojure, and it's
-;; fairly straightforward to convert it. Running realize-stream-head
-;; bounces the trampoline until a result comes out, at which point we
-;; can give it to the caller.
-(defn stream-to-seq [stream]
-  (lazy-seq
-   (let [stream (realize-stream-head stream)]
-     (if (= empty-stream stream)
-       '()
-       (cons (.head stream) (stream-to-seq (.next stream)))))))
 
 
 ;; ## <a name="goals"></a>Goals

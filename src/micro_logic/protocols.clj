@@ -12,7 +12,8 @@
 (defprotocol IStream
   (merge-streams [$1 $2])
   (mapcat-stream [$ g])
-  (realize-stream-head [$]))
+  (realize-stream-head [$])
+  (stream-to-seq [$]))
 
 (defprotocol IReifySubstitution
   (reify-s* [v s]))
