@@ -65,7 +65,8 @@
 ;; application.  We then extend the unifier and the reifier to support
 ;; this type and define the basic miniKanren sequence goals using it.
 ;; (*conso*, *firsto*, *resto*, *emptyo*)
-
+;;
+;; <hr>
 (ns micro-logic.core
   (:require [micro-logic.protocols :refer :all]))
 
@@ -73,18 +74,17 @@
 ;; ## <a name="lvars"></a>Logic Variables
 ;;
 ;; Logic variables (lvars for short) are the unknown items that will
-;; be given a value by the unifier. Each of them has an id (*c*); this
-;; is a number which is assigned when a new variable is allocated by
-;; (fresh). The interpreter state stores the next id to use.
-(defrecord LVar [c])
-(defn lvar [c] (LVar. c))
+;; be given a value by the unifier. Each of them has an id; this
+;; is a number which is assigned when a new variable is allocated.
+(defrecord LVar [id])
+(defn lvar [id] (LVar. id))
 (defn lvar? [x] (instance? LVar x))
 
 
 ;; ## <a name="substitutions"></a><a name="walk"></a>Substitutions and Walking
 ;;
-;; A substitution map (*s*) gives mappings from logic variables to
-;; their values.
+;; A substitution map (*s-map*) is a hash-map that gives
+;; mappings from logic variables to their values.
 ;;
 ;; To see what value an lvar is bound to in a given substitution map,
 ;; use `(walk u s)`. (*u* is an lvar or a value) Supposing *a* and *b*
@@ -109,14 +109,14 @@
 ;; indicating that the variable is currently unbound.
 (extend-protocol IWalk
   LVar
-  (walk [u s] (if-let [val (get s u)]
-                (recur val s)
-                u))
+  (walk [u s-map] (if-let [val (get s-map u)]
+                    (recur val s-map)
+                    u))
   Object
-  (walk [u s] u)
+  (walk [u s-map] u)
 
   nil
-  (walk [u s] nil))
+  (walk [u s-map] nil))
 
 ;; ## <a name="unification"></a>Unification
 
@@ -133,32 +133,33 @@
   A *term* is, somewhat circularly, something you can pass to the
   unifier.  this includes lvars, regular values, and values of any
   type to which you have extended IUnifyTerms. "
-  [u v s]
-  (let [u (walk u s),        v (walk v s)
+  [u v s-map]
+  (let [u (walk u s-map),    v (walk v s-map)
         u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
     (cond
-      ;; Unifying two lvars adds no information
-      (and u-is-lvar v-is-lvar (= u v)) s
+      ;; Unifying two lvars adds no information to the substitution map
+      (and u-is-lvar v-is-lvar (= u v)) s-map
 
-      ;; Unifying an lvar with some other value creates a new substitution
-      u-is-lvar (assoc s u v)
-      v-is-lvar (assoc s v u)
+      ;; Unifying an lvar with some other value creates a new entry in
+      ;; the substitution map
+      u-is-lvar (assoc s-map u v)
+      v-is-lvar (assoc s-map v u)
 
       ;; Unifying two non-lvars is delegated to the polymorphic
-      ;; `unify-terms` function.
-      :default (unify-terms u v s))))
+      ;; `unify-terms` function, from IUnifyTerms.
+      :default (unify-terms u v s-map))))
 
 ;; If there is no more specific definition, unificiation between two
 ;; values should at least succeed if they are equal. Return nil if
 ;; they are not, indiciating that the terms cannot be unified.
 (extend-protocol IUnifyTerms
   Object
-  (unify-terms [u v s]
-    (if (= u v) s))
+  (unify-terms [u v s-map]
+    (if (= u v) s-map))
 
   nil
-  (unify-terms [u v s]
-    (if (= u v) s)))
+  (unify-terms [u v s-map]
+    (if (= u v) s-map)))
 
 
 
@@ -293,10 +294,12 @@
 ;; ## <a name="goals"></a>Goals
 
 ;; A *state* is a record containing a substitution map *s* and the id
-;; of the next unbound logic variable *c*.
-(defrecord State [s c])
-(defn state [s c] (State. s c))
-(def empty-state (state {} 0))
+;; of the next unbound *next-id*.
+(defrecord State [s-map next-id])
+(defn make-state [s-map next-id] (State. s-map next-id))
+(def empty-state (make-state {} 0))
+(defn with-s-map [state s-map] (assoc state :s-map s-map))
+(defn with-next-id [state next-id] (assoc state :next-id next-id))
 
 ;; A goal is a function which, given a state, returns a stream of
 ;; states. Conceptually, it encodes some constraints. Give it an input
@@ -313,37 +316,37 @@
 (defn ===
   "Given two terms u and v, create a goal that will unify them. The
   goal takes an existing state and returns either a state with
-  bindings for lvars in u and v (using `unify`), or returns the empty
+  bindings for the lvars in u and v (using `unify`), or returns the empty
   stream if no such state exists. "
   [u v]
-  (fn unify-goal [st]
-    (if-let [s' (unify u v (.s st))]
-      (stream (state s' (.c st)))
+  (fn unify-goal [{:keys [s-map] :as state}]
+    (if-let [s-map' (unify u v s-map)]
+      (stream (with-s-map state s-map'))
       empty-stream)))
 
 (defn call-fresh
-  "Wrap the goal constructor *gc*, a function of a single lvar, in a
+  "Wrap *goal-custructor*, a function of a single lvar, in a
   goal that allocates a new lvar from its state parameter and passes
-  it to *gc*."
-  [gc]
-  (fn fresh-goal [st]
-    (let [c (.c st)]
-     ((gc (lvar c)) (state (.s st) (inc c))))))
+  it to *goal-constructor*."
+  [goal-constructor]
+  (fn fresh-goal [{:keys [s-map next-id] :as state}]
+    (let [goal (goal-constructor (lvar next-id))]
+     (goal (with-next-id state (inc next-id))))))
 
 (defn ldisj
   "Logical disjuction ('or'). Construct a new goal that succeeds
   whenever *g1* or *g2* succeed. `merge-streams` is used on each
   goal's output to ensure fair scheduling between the two."
   [g1 g2]
-  (fn disj-goal [st]
-    (merge-streams (g1 st) (g2 st))))
+  (fn disj-goal [state]
+    (merge-streams (g1 state) (g2 state))))
 
 (defn lconj
   "Logical conjunction ('and'). Construct a new goal that succeeds
   when both *g1* and *g2* succeed."
   [g1 g2]
-  (fn conj-goal [st]
-    (mapcat-stream (g1 st) g2)))
+  (fn conj-goal [state]
+    (mapcat-stream (g1 state) g2)))
 
 
 
@@ -362,8 +365,8 @@
 
   This is useful for defining recursive goals."
   [g]
-  `(fn delayed-goal-outer [st#]
-     (fn delayed-goal-inner [] (~g st#))))
+  `(fn delayed-goal-outer [state#]
+     (fn delayed-goal-inner [] (~g state#))))
 
 (defmacro ldisj+
   "Extended version of the `ldisj` function. This one handles multiple
@@ -413,12 +416,12 @@
   (deep-walk [v s] v))
 
 
-(defn reify-state-first-var [st]
-  (let [v (walk* (lvar 0) (.s st))]
+(defn reify-state-first-var [{:keys [s-map]}]
+  (let [v (walk* (lvar 0) s-map)]
     (walk* v (reify-s v {}))))
 
-(defn reify-state-lvar [st lv]
-  (let [v (walk* lv (.s st))]
+(defn reify-state-lvar [{:keys [s-map]} lvar]
+  (let [v (walk* lvar s-map)]
     (walk* v (reify-s v {}))))
 
 
