@@ -193,9 +193,9 @@
 ;;   along the way.
 (def empty-stream
   (reify IStream
-    (merge-streams [$1 $2] $2)
-    (mapcat-stream [$ g] $)
-    (realize-stream-head [$] $)))
+    (merge-streams [stream-1 stream-2] stream-2)
+    (mapcat-stream [stream g] stream)
+    (realize-stream-head [stream] stream)))
 
 ;; ### Mature streams (StreamNode)
 ;;
@@ -210,11 +210,11 @@
 ;; `mapcat-stream` to `mapcat`.
 (deftype StreamNode [head next]
   IStream
-  (merge-streams [$1 $2] (StreamNode. head
-                                      (merge-streams next $2)))
-  (mapcat-stream [$ g] (merge-streams (g head)
+  (merge-streams [stream-1 stream-2] (StreamNode. head
+                                      (merge-streams next stream-2)))
+  (mapcat-stream [stream g] (merge-streams (g head)
                                       (mapcat-stream next g)))
-  (realize-stream-head [$] $))
+  (realize-stream-head [stream] stream))
 
 ;; ### Immature streams (IFn)
 ;;
@@ -231,12 +231,12 @@
 ;; interleaving. Let's examine the definition:
 ;;
 ;;     clojure.lang.IFn
-;;     (merge-streams [$1 $2] #(merge-streams $2 ($1)))
+;;     (merge-streams [stream-1 stream-2] #(merge-streams stream-2 (stream-1)))
 ;;
-;; Working from the inside out: we know that $1 is a function because
+;; Working from the inside out: we know that stream-1 is a function because
 ;; we're extending IStream onto IFn; calling it will perform one 'step
 ;; of computation', whatever that might be. It returns a stream.
-;; Then we merge that stream with $2, the second parameter of this merge operation,
+;; Then we merge that stream with stream-2, the second parameter of this merge operation,
 ;; *but the order is reversed*.
 ;;
 ;; Finally, the above operation is all wrapped in a thunk. So we end up with a
@@ -263,7 +263,7 @@
 ;; mapcat-stream is somewhat simpler.
 ;;
 ;;     clojure.lang.IFn
-;;     (mapcat-stream [$ g] #(mapcat-stream ($) g))
+;;     (mapcat-stream [stream g] #(mapcat-stream (stream) g))
 ;;
 ;; The basic concept here is pretty straightforward: make a new thunk which,
 ;; when executed later, will do some work and then mapcat `g` over the result.
@@ -271,11 +271,11 @@
 ;; TODO: explain why this needs to be wrapped in a thunk
 (extend-protocol IStream
   clojure.lang.IFn
-  (merge-streams [$1 $2] #(merge-streams $2 ($1)))
-  (mapcat-stream [$ g] #(mapcat-stream ($) g))
-  (realize-stream-head [$] (trampoline $)))
+  (merge-streams [stream-1 stream-2] #(merge-streams stream-2 (stream-1)))
+  (mapcat-stream [stream g] #(mapcat-stream (stream) g))
+  (realize-stream-head [stream] (trampoline stream)))
 
-(defn stream [s] (StreamNode. s empty-stream))
+(defn make-stream [s] (StreamNode. s empty-stream))
 
 ;; #### Seq conversion
 ;;
@@ -283,12 +283,12 @@
 ;; fairly straightforward to convert it. Running realize-stream-head
 ;; bounces the trampoline until a result comes out, at which point we
 ;; can give it to the caller.
-(defn stream-to-seq [$]
+(defn stream-to-seq [stream]
   (lazy-seq
-   (let [$' (realize-stream-head $)]
-     (if (= empty-stream $')
+   (let [stream (realize-stream-head stream)]
+     (if (= empty-stream stream)
        '()
-       (cons (.head $') (stream-to-seq (.next $')))))))
+       (cons (.head stream) (stream-to-seq (.next stream)))))))
 
 
 ;; ## <a name="goals"></a>Goals
@@ -321,7 +321,7 @@
   [u v]
   (fn unify-goal [{:keys [s-map] :as state}]
     (if-let [s-map' (unify u v s-map)]
-      (stream (with-s-map state s-map'))
+      (make-stream (with-s-map state s-map'))
       empty-stream)))
 
 (defn call-fresh
@@ -335,18 +335,18 @@
 
 (defn ldisj
   "Logical disjuction ('or'). Construct a new goal that succeeds
-  whenever *g1* or *g2* succeed. `merge-streams` is used on each
+  whenever *goal-1* or *goal-2* succeed. `merge-streams` is used on each
   goal's output to ensure fair scheduling between the two."
-  [g1 g2]
+  [goal-1 goal-2]
   (fn disj-goal [state]
-    (merge-streams (g1 state) (g2 state))))
+    (merge-streams (goal-1 state) (goal-2 state))))
 
 (defn lconj
   "Logical conjunction ('and'). Construct a new goal that succeeds
-  when both *g1* and *g2* succeed."
-  [g1 g2]
+  when both *goal-1* and *goal-2* succeed."
+  [goal-1 goal-2]
   (fn conj-goal [state]
-    (mapcat-stream (g1 state) g2)))
+    (mapcat-stream (goal-1 state) goal-2)))
 
 
 
@@ -364,9 +364,9 @@
   realize-stream-head.
 
   This is useful for defining recursive goals."
-  [g]
+  [goal]
   `(fn delayed-goal-outer [state#]
-     (fn delayed-goal-inner [] (~g state#))))
+     (fn delayed-goal-inner [] (~goal state#))))
 
 (defmacro ldisj+
   "Extended version of the `ldisj` function. This one handles multiple
@@ -374,13 +374,13 @@
   with `delay-goal`, so you don't need to worry about adding them yourself.
 
   (This does have a performance cost, but speed is not the point of this port)"
-  ([g] `(delay-goal ~g))
-  ([g & gs] `(ldisj (delay-goal ~g) (ldisj+ ~@gs))))
+  ([goal] `(delay-goal ~goal))
+  ([goal & goals] `(ldisj (delay-goal ~goal) (ldisj+ ~@goals))))
 
 (defmacro lconj+
   "Like `ldisj+`, but for `lconj`."
-  ([g] `(delay-goal ~g))
-  ([g & gs] `(lconj (delay-goal ~g) (lconj+ ~@gs))))
+  ([goal] `(delay-goal ~goal))
+  ([goal & goals] `(lconj (delay-goal ~goal) (lconj+ ~@goals))))
 
 
 
@@ -443,7 +443,7 @@
 
 (defmacro fresh
   "Provide a more convenient syntax for `call-fresh`. `fresh` lets you
-  declare multiple logic variables and once, and it takes care of the
+  declare multiple logic variables at once, and it takes care of the
   function declaration mechanics for you.
 
   The body of fresh is passed to `lconj+`, a logical 'and'.
@@ -460,19 +460,14 @@
                    (fresh [~@(rest var-vec)]
                      ~@clauses)))))
 
-(defn call-empty-state [g]
-  (g empty-state))
+(defn call-empty-state [goal]
+  (goal empty-state))
 
-(defmacro basic-run*
-  "reify-fn: state -> thing you want"
-  [reify-fn query-var-vec & gs]
-  `(->> (fresh [~@query-var-vec] ~@gs)
+(defmacro run* [fresh-var-vec & goals]
+  `(->> (fresh [~@fresh-var-vec] ~@goals)
      call-empty-state
      stream-to-seq
-     (map ~reify-fn)))
+     (map reify-state-first-var)))
 
-(defmacro run* [query-var-vec & gs]
-  `(basic-run* reify-state-first-var [~@query-var-vec] ~@gs))
-
-(defmacro run [n query-var-vec & gs]
-  `(take ~n (run* ~query-var-vec ~@gs)))
+(defmacro run [n fresh-var-vec & goals]
+  `(take ~n (run* ~fresh-var-vec ~@goals)))
