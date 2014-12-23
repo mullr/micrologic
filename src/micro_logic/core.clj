@@ -1,66 +1,76 @@
-;; # microLogic
-;; A literate Clojure implementation of microKanren.
+;; This is a logic programming system embedded in Clojure. It's made
+;; of a few simple pieces, some surprising in their depth; we'll
+;; examine them each in turn, then put them together and show how to
+;; do some logic programming with the result.
 ;;
-;; It may also be a suitable base for experimenting with new logic
-;; programming ideas, because of its simplicity.
+;; ## Audience
 ;;
-;; ## Differences from microKanren
-;; Polymorphic dispatch via protocols is used in place of `(cond)` with
-;; type checks, where possible.
+;; This literate program is written for any Clojure programmer who
+;; wants to know more about logic programming. You don't need a
+;; particularly deep knowledge of logic programming going into this,
+;; but it may help to have gone through a tutorial or two so you can
+;; recognize the end when we get there.
 ;;
-;; Clojure-native datatypes are used where appropriate
-;; - The substitution map is a clojure map instead of an alist
-;; - There is an LVar defrecrord, instead of using a vector of c
-;; - We have an explicit StreamNode data type, rather building on the
-;;   built-in list type
-;; - Clojure doesn't allow improper lists; LListCell is a linked list
-;;   which does.
+;; ## Overview
 ;;
-;; Many names have changed to be more clojure-like:
+;; We'll start by defining [*logic variables*](#lvars) (*lvars*) and
+;; [*substition maps*](#substitutions). An lvar is a variable which
+;; gets a value through an entry in the subsitution map. We then
+;; define a [*walk*](#walk) function to get the value of an lvar out
+;; of an existing substitution map.
 ;;
-;;     |uKanren | microLogic          |
-;;     |--------|---------------------|
-;;     |mplus   | merge-streams       |
-;;     |bind    | mapcat-stream       |
-;;     |pull    | realize-stream-head |
-;;     |mzero   | empty-stream        |
-;;     |unit    | stream              |
-;;     |Zzz     | delay-goal          |
-;;     |conj    | lconj               |
-;;     |disj    | ldisj               |
-;;     |==      | ===                 |
+;; With those in place, we can define the [*unifier*](#unification), a
+;; way to declare that two terms (which may include lvars) must be
+;; equal and to compute what substitution map must be used to make
+;; them equal.
 ;;
-;; ## Differences from core.logic
-;;     |core.logic | microLogic           |
-;;     |-----------|----------------------|
-;;     |mplus      | merge-streams        |
-;;     |bind       | mapcat-stream        |
-;;     |pull       | realize-stream-head  |
-;;     |mzero      | empty-stream         |
-;;     |unit       | stream               |
-;;     |==         | ===                  |
-;;     |LCons      | LListCell            |
+;; We then take a left turn into the most remarkable poart of
+;; miniKanren, its definition of [*lazy streams*](#streams). These are
+;; unordered streams that can be composed together in a fair way: no
+;; one stream will monopolize all computing resources, instead
+;; interleaving its computation and its results with other streams it
+;; has been combined with.
 ;;
-;; ## References
-;; - This is largely based on [microKanren](http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf), a minimal version of miniKanren
-;; - The microKanren [scheme implementation](https://github.com/jasonhemann/microKanren)
-;; - [core.logic](https://github.com/clojure/core.logic), Clojure's real miniKanren implementation
-;; - Will Byrd's [dissertation on miniKanren](https://github.com/webyrd/dissertation-single-spaced/raw/master/thesis.pdf)
-
+;; The above are the primitive elements; we can use them to start to
+;; define the actual logic interpreter.  We begin with a definition of
+;; [*interpreter state*](#goals), (which contains the current
+;; substitution map and some other book-keeping information).
+;;
+;; Then we can create [*goal*](#goals) functions, which take a
+;; prexisting interpreter state and return a stream of possible
+;; interpreter states which meet the goal's constraints.  Several
+;; useful *goal constructors* are defined: *===* (unify), *ldisj*
+;; (logical or), *lconj* (logical and), *call-fresh* (call a function
+;; with a newly allocated lvar) and some extended utilities.
+;;
+;; To translate streams of interpreter states (the output of each goal
+;; function) to something more useful, we implement a
+;; [*reify*](#reify) function that extract the desired information
+;; from each state.
+;;
+;; Finally, we put the pieces together to define the
+;; [programmer interface](#programmerInterface): the *run* and *run**
+;; macros, *conde* and *fresh*, which will be familiar to any core.logic
+;; or minikanren programmer.
+;;
+;; ### Extensibility
+;;
+;; We use Clojure's protocols in defining many of the above functions, in a bid
+;; to make the core logic system extensible to new data structures. (this is
+;; similar to core.logic) By way of example, and also to be able to do some
+;; useful logic programming, extend the core to support sequences.
+;;
+;; First we have to define a custom linked-list type. Clojure doesn't
+;; support 'improper lists', which are very useful for this
+;; application.  We then extend the unifier and the reifier to support
+;; this type and define the basic miniKanren sequence goals using it.
+;; (*conso*, *firsto*, *resto*, *emptyo*)
 
 (ns micro-logic.core
   (:require [micro-logic.protocols :refer :all]))
 
-;; ## Common variables
-;; - *c* The id of an lvar
-;; - *s* A substitution map. Keys are lvars, values are either lvars or values.
-;; - *u, v* Either an lvar or a literal value. Unification terms, more precisely.
-;; - *g* A goal function. Given a substition map, produce a stream of substitution maps.
-;; - *gc* Goal constructor function.
-;; - *$* A stream: either a function, an lcons, or nil.
-;; - *st* A state: holds a substitution map and the id of the next unallocated lvar.
 
-;; ## Logic Variables
+;; ## <a name="lvars"></a>Logic Variables
 ;;
 ;; Logic variables (lvars for short) are the unknown items that will
 ;; be given a value by the unifier. Each of them has an id (*c*); this
@@ -71,7 +81,7 @@
 (defn lvar? [x] (instance? LVar x))
 
 
-;; ## Substitutions and Walking
+;; ## <a name="substitutions"></a><a name="walk"></a>Substitutions and Walking
 ;;
 ;; A substitution map (*s*) gives mappings from logic variables to
 ;; their values.
@@ -108,7 +118,7 @@
   nil
   (walk [u s] nil))
 
-;; # Unification
+;; ## <a name="unification"></a>Unification
 
 (defn unify
   "Given two terms *u* and *v*, and an existing substitution map *s*,
@@ -152,7 +162,7 @@
 
 
 
-;; # Streams
+;; # <a name="streams"></a>Lazy Streams
 ;;
 ;; The lazy stream mechanism is one of the really interesting parts
 ;; about miniKanren. It's different from regular scheme linked lists
@@ -280,7 +290,7 @@
        (cons (.head $') (stream-to-seq (.next $')))))))
 
 
-;; ## Goals
+;; ## <a name="goals"></a>Goals
 
 ;; A *state* is a record containing a substitution map *s* and the id
 ;; of the next unbound logic variable *c*.
@@ -370,41 +380,8 @@
   ([g & gs] `(lconj (delay-goal ~g) (lconj+ ~@gs))))
 
 
-(defmacro conde
-  "The regular miniKanren `conde` form, a disjunction of
-  conjunctions. Supposing that *a* and *b* are lvars,
 
-      (conde
-        [(=== a 1) (=== b 2)]
-        [(=== a 7) (=== b 12)})
-
-  will produce two results: {a 1, b 2} and {a 7, b 12}."
-  [& clauses]
-  `(ldisj+ ~@(map (fn [clause]
-                    `(lconj+ ~@clause))
-                  clauses)))
-
-(defmacro fresh
-  "Provide a more convenient syntax for `call-fresh`. `fresh` lets you
-  declare multiple logic variables and once, and it takes care of the
-  function declaration mechanics for you.
-
-  The body of fresh is passed to `lconj+`, a logical 'and'.
-
-      (fresh [x y]
-        (=== x 1)
-        (=== y 2))
-
-  Will give one result, {x 1, y 2}."
-  [var-vec & clauses]
-  (if (empty? var-vec)
-    `(lconj+ ~@clauses)
-    `(call-fresh (fn [~(first var-vec)]
-                   (fresh [~@(rest var-vec)]
-                     ~@clauses)))))
-
-
-;; ## Reificiation
+;; ## <a name="reify"></a>Reificiation
 
 ;; In miniKanren, reification refers to extracting the desired values
 ;; from the stream of states you get as a result of executing a goal.
@@ -445,7 +422,40 @@
     (walk* v (reify-s v {}))))
 
 
-;;; run interface
+;;; ## <a name="interface"></a>Programmer interface
+
+(defmacro conde
+  "The regular miniKanren `conde` form, a disjunction of
+  conjunctions. Supposing that *a* and *b* are lvars,
+
+      (conde
+        [(=== a 1) (=== b 2)]
+        [(=== a 7) (=== b 12)})
+
+  will produce two results: {a 1, b 2} and {a 7, b 12}."
+  [& clauses]
+  `(ldisj+ ~@(map (fn [clause]
+                    `(lconj+ ~@clause))
+                  clauses)))
+
+(defmacro fresh
+  "Provide a more convenient syntax for `call-fresh`. `fresh` lets you
+  declare multiple logic variables and once, and it takes care of the
+  function declaration mechanics for you.
+
+  The body of fresh is passed to `lconj+`, a logical 'and'.
+
+      (fresh [x y]
+        (=== x 1)
+        (=== y 2))
+
+  Will give one result, {x 1, y 2}."
+  [var-vec & clauses]
+  (if (empty? var-vec)
+    `(lconj+ ~@clauses)
+    `(call-fresh (fn [~(first var-vec)]
+                   (fresh [~@(rest var-vec)]
+                     ~@clauses)))))
 
 (defn call-empty-state [g]
   (g empty-state))
