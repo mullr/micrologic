@@ -32,7 +32,7 @@
   (testing "goals"
     (testing "basic"
       (are [g, s c] (= (stream-to-seq (g empty-state))
-                       (stream-to-seq (stream (state s c))))
+                       [(make-state s c)])
            (=== 1 1), {} 0
            (=== a 1), {a 1} 0
            (=== 1 a), {a 1} 0
@@ -43,29 +43,29 @@
     (testing "composite"
       (are [g, states] (= (stream-to-seq (g empty-state))
                           states)
-           (ldisj (=== a 1) (=== 2 2)), [(state {a 1} 0)
-                                         (state {} 0)]
+           (ldisj (=== a 1) (=== 2 2)), [(make-state {a 1} 0)
+                                         (make-state {} 0)]
 
-           (ldisj (=== a 1) (=== a 2)), [(state {a 1} 0)
-                                         (state {a 2} 0)]
+           (ldisj (=== a 1) (=== a 2)), [(make-state {a 1} 0)
+                                         (make-state {a 2} 0)]
 
-           (ldisj+ (=== a 1) (=== a 2)), [(state {a 1} 0)
-                                          (state {a 2} 0)]
+           (ldisj+ (=== a 1) (=== a 2)), [(make-state {a 1} 0)
+                                          (make-state {a 2} 0)]
 
 
-           (lconj (=== a 1) (=== b 2)), [(state {a 1, b 2} 0)]
+           (lconj (=== a 1) (=== b 2)), [(make-state {a 1, b 2} 0)]
 
            (lconj (=== a 1) (=== a 2)), []
 
 
-           (delay-goal (=== a 1)), [(state {a 1} 0)]
+           (delay-goal (=== a 1)), [(make-state {a 1} 0)]
 
-           (conde [(=== a 1)] [(=== a 2)]), [(state {a 1} 0)
-                                             (state {a 2} 0)]
+           (conde [(=== a 1)] [(=== a 2)]), [(make-state {a 1} 0)
+                                             (make-state {a 2} 0)]
 
-           (fresh [x] (=== x 42)), [(state {(lvar 0) 42} 1)]
+           (fresh [x] (=== x 42)), [(make-state {(lvar 0) 42} 1)]
 
-           (fresh [x y] (=== x 42) (=== y x)), [(state {(lvar 0) 42, (lvar 1) 42} 2)]
+           (fresh [x y] (=== x 42) (=== y x)), [(make-state {(lvar 0) 42, (lvar 1) 42} 2)]
            )))
 
   (testing "scheduling"
@@ -89,4 +89,22 @@
 
       (is (= [5 6 5 6 5]
              (run 5 [q] (fives-and-sixes q))))
-      )))
+
+      ))
+
+  (testing "walk*"
+    (are [lvar s-map, value] (= value (walk* lvar s-map))
+
+         a {},        a
+         a {a 2},     2
+         a {a b},     b
+         a {a b, b 2} 2
+
+         a {a (seq->llist [1 2 b])
+            b 3}                       [1 2 3]
+
+         a {a (seq->llist [1 2 b])}    [1 2 b]
+
+         )
+    )
+  )

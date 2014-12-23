@@ -22,7 +22,31 @@
 ;; IPersistentCollection, Sequential, and ISeq so it can interoperate
 ;; with the clojure standard library
 
-(declare empty-llist)
+
+(declare lcons)
+
+;; The singleton empty list is an instance of LListCell, to allow it to be dispatched
+;; with the protocol system.
+(def empty-llist
+  (reify
+    ILList
+    (lfirst [_] nil)
+    (lrest [self] self)
+
+    clojure.lang.IPersistentCollection
+    (seq [_] nil)
+    (cons [self o] (lcons o self))
+    (empty [self] self)
+    (equiv [self o] (= (seq self) (seq o)))
+
+    clojure.lang.Sequential
+    clojure.lang.ISeq
+    (first [_] nil)
+    (next [_] nil)
+    (more [_] nil)
+    ))
+
+(defn lempty? [x] (= empty-llist x))
 
 (deftype LListCell [item next-cell]
   ILList
@@ -42,21 +66,18 @@
   clojure.lang.Sequential
   clojure.lang.ISeq
   (first [self] item)
-  (next [self] (if (instance? LListCell next-cell)
-                 next-cell
-                 (list next-cell)))
-  (more [self] (next self)))
+  (next [self] (cond
+                 (lempty? next-cell) nil
+                 (instance? LListCell next-cell) next-cell
+                 :default (list next-cell)))
+  (more [self] (if (lempty? next-cell)
+                 nil
+                 (next self))))
 
 ;; Define a constructor and a type-test, which are useful shortcuts
 ;; below.
 (defn lcons [a b] (LListCell. a b))
 (defn llist? [x] (instance? LListCell x))
-
-
-;; The singleton empty list is an instance of LListCell, to allow it to be dispatched
-;; with the protocol system.
-(def empty-llist (lcons nil nil))
-(defn lempty? [x] (= empty-llist x))
 
 ;; By extending IUnifyTerms, LList is able to participate in
 ;; unification. We use a simple recursive definition to say the
@@ -78,7 +99,9 @@
 (extend-protocol IDeepWalk
   LListCell
   (deep-walk [v s] (lcons (walk* (lfirst v) s)
-                          (walk* (lrest v) s))))
+                          (if (lempty? (lrest v))
+                            empty-llist
+                            (walk* (lrest v) s)))))
 
 ;; Add support to the printer for our LList data type.  Print it like
 ;; a normal list unless it's an improper list; in that case, use '.'

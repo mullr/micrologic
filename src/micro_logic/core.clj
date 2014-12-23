@@ -382,37 +382,34 @@
 (defn reify-name [n]
   (symbol (str "_." n)))
 
-(defn reify-s [v s]
-  (reify-s* (walk v s) s))
+(defn reify-s [v s-map]
+  (reify-s* (walk v s-map) s-map))
 
 
 (extend-protocol IReifySubstitution
   LVar
-  (reify-s* [v s] (let [n (reify-name (count s))]
-                    (assoc s v n)))
+  (reify-s* [v s-map] (let [n (reify-name (count s-map))]
+                        (assoc s-map v n)))
 
   Object
-  (reify-s* [v s] s))
+  (reify-s* [v s-map] s-map))
 
 
-(defn walk* [v s]
-  (let [v' (walk v s)]
-    (deep-walk v' s)))
+;; Like walk. But instead of simply returning any non-lvar,
+;; it runs will attempt to assign values to any embedded lvars.
+;; For example, (walk* a {a (1 2 c), c 3)} will give (1 2 3).
+;; (once we have the sequences extension from sequence.clj)
+(defn walk* [v s-map]
+  (deep-walk (walk v s-map) s-map))
 
 (extend-protocol IDeepWalk
-  LVar
-  (deep-walk [v s] v)
-
-  Object
-  (deep-walk [v s] v))
+  LVar   (deep-walk [v s-map] v)
+  Object (deep-walk [v s-map] v)
+  nil    (deep-walk [v s-map] v))
 
 
 (defn reify-state-first-var [{:keys [s-map]}]
   (let [v (walk* (lvar 0) s-map)]
-    (walk* v (reify-s v {}))))
-
-(defn reify-state-lvar [{:keys [s-map]} lvar]
-  (let [v (walk* lvar s-map)]
     (walk* v (reify-s v {}))))
 
 
@@ -420,7 +417,8 @@
 
 (defmacro conde
   "The regular miniKanren `conde` form, a disjunction of
-  conjunctions. Supposing that *a* and *b* are lvars,
+  conjunctions (an 'or' of 'ands'). Supposing that *a* and *b* are
+  lvars,
 
       (conde
         [(=== a 1) (=== b 2)]
