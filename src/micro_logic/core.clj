@@ -400,10 +400,10 @@
   (reify-s* [v s-map] s-map))
 
 
-;; Like walk. But instead of simply returning any non-lvar,
-;; it runs will attempt to assign values to any embedded lvars.
-;; For example, (walk* a {a (1 2 c), c 3)} will give (1 2 3).
-;; (once we have the sequences extension from sequence.clj)
+;; Like walk. But instead of simply returning any non-lvar value, will
+;; attempt to assign values to any lvars embedded in the value.  For
+;; example, (walk* a {a (1 2 c), c 3)} will give (1 2 3).  (once we
+;; have the sequence extensions from sequence.clj)
 (defn walk* [v s-map]
   (deep-walk (walk v s-map) s-map))
 
