@@ -22,11 +22,12 @@
          1 2, nil
          a 42, {a 42}
          42 a, {a 42}
-         (lcons 1 nil) (lcons 1 nil), {}
-         (lcons 1 2)   (lcons 1 2),   {}
-         (lcons 1 nil) (lcons a nil), {a 1}
-         (lcons 1 nil) (lcons a b),   {a 1, b nil}
-         (lcons 1 b)   (lcons a nil), {a 1, b nil}
+
+         [1 2 3]   [1 2 3]     {}
+         [1 2 a]   [1 2 3]     {a 3}
+         [1 dot a] [1 2 3]     {a [2 3]}
+         [1 dot a] [1]         {a []}
+         [1 2 3]   [1 dot a]   {a [2 3]}
          ))
 
   (testing "goals"
@@ -89,7 +90,6 @@
 
       (is (= [5 6 5 6 5]
              (run 5 [q] (fives-and-sixes q))))
-
       ))
 
   (testing "walk*"
@@ -100,10 +100,29 @@
          a {a b},     b
          a {a b, b 2} 2
 
-         a {a (seq->llist [1 2 b])
-            b 3}                       [1 2 3]
+         a {a [1 2 b], b 3} [1 2 3]
+         a {a [1 2 b]}      [1 2 b]
 
-         a {a (seq->llist [1 2 b])}    [1 2 b]
+         ))
+
+  (testing "sequence goals"
+    (are [goal, result] (= result (first (run 1 [q] goal)))
+
+         (conso 1 [2 3] q)          [1 2 3]
+         (conso q [2 3] [1 2 3])    1
+         (conso 1 q     [1 2 3])    [2 3]
+
+         (firsto q                  [1 2 3]) 1
+         (firsto 1 q)               [1 dot '_.0]
+
+         (resto q [1 2 3])          [2 3]
+         (resto [2 3] q)            ['_.0 2 3]
+
+         (fresh [x y z a b]
+           (=== x 1)
+           (=== y 2)
+           (conso y '() a)
+           (conso x a q))           [1 2]
 
          )
     )

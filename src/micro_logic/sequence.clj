@@ -9,125 +9,64 @@
 ;; extensible way. We'll now proceed to add sequence support to the
 ;; base language.
 
-;; Unfortunately, the regular clojure list type isn't sufficient for
-;; our purposes. There are many cases where we want to unify against
-;; the tail of a sequence, which means putting an lvar in the tail
-;; position.  Standard minikanren uses imporoper lists for this. For
-;; example, `(1 . a)` may be unified against a with another list to
-;; match all lists beginning with 1, assigning the suffix to the lvar
-;; *a*.
+;; When we unify sequences, we'd like to be able to indicate that an
+;; lvar should be associated with the tail of a sequence. In the
+;; scheme implementation, this is easy: by placing an lvar in the tail
+;; position of a linked list node (the cdr position of a cons node),
+;; the unification happens naturally when walking down the list.
 ;;
-;; We define here the LList (Logic List) type, which is a simple
-;; linked list without that restriction. It extends
-;; IPersistentCollection, Sequential, and ISeq so it can interoperate
-;; with the clojure standard library
+;; Since Clojure disallows putting non-list items in linked-list cells
+;; (so-called 'improper lists'), we have to find another way to do
+;; it. core.logic solves this problem by defining its own LCons data
+;; type which does allow improper lists. We take a different approach here.
+;;
+;; Whenver you want an improper list in the context of a logic program,
+;; you can signify it with the 'dot' sigil. For example: `[1 2 dot a]`.
+;; This is meant to evoke the Scheme and Common LISP notation for improper
+;; lists: `(1 2 . 3)`. This will typically be transparent to the user on
+;; the programming side, since such lists will be automatically
+;; constructed by the 'conso' goal below.
+(deftype Dot [])
+(def dot (Dot.))
 
+;; There are times when the user may see an improper list as the
+;; result of a query. In this case, print the sigil as "."
+(defmethod print-method Dot [l ^java.io.Writer w]
+  (.write w "."))
 
-(declare lcons)
-
-;; The singleton empty list is an instance of LListCell, to allow it to be dispatched
-;; with the protocol system.
-(def empty-llist
-  (reify
-    ILList
-    (lfirst [_] nil)
-    (lrest [self] self)
-
-    clojure.lang.IPersistentCollection
-    (seq [_] nil)
-    (cons [self o] (lcons o self))
-    (empty [self] self)
-    (equiv [self o] (= (seq self) (seq o)))
-
-    clojure.lang.Sequential
-    clojure.lang.ISeq
-    (first [_] nil)
-    (next [_] nil)
-    (more [_] nil)
-    ))
-
-(defn lempty? [x] (= empty-llist x))
-
-(deftype LListCell [item next-cell]
-  ILList
-  (lfirst [lc] item)
-  (lrest [lc] next-cell)
-
-  clojure.lang.IPersistentCollection
-  (seq [self] self)
-  (cons [self o] (LListCell. o self))
-  (empty [self] empty-llist)
-  (equiv [self o] (if (instance? LListCell o)
-                    (and (= item
-                            (lfirst o))
-                         (= next-cell (lrest o)))
-                    false))
-
-  clojure.lang.Sequential
-  clojure.lang.ISeq
-  (first [self] item)
-  (next [self] (cond
-                 (lempty? next-cell) nil
-                 (instance? LListCell next-cell) next-cell
-                 :default (list next-cell)))
-  (more [self] (if (lempty? next-cell)
-                 nil
-                 (next self))))
-
-;; Define a constructor and a type-test, which are useful shortcuts
-;; below.
-(defn lcons [a b] (LListCell. a b))
-(defn llist? [x] (instance? LListCell x))
-
-;; By extending IUnifyTerms, LList is able to participate in
-;; unification. We use a simple recursive definition to say the
-;; unifying two sequences means that we unify their elements.
 (extend-protocol IUnifyTerms
-  LListCell
+  clojure.lang.Sequential
   (unify-terms [u v s]
-    (when (llist? v)
-      (->> s
-        (unify (lfirst u) (lfirst v))
-        (unify (lrest u) (lrest v))))))
+    (cond
+      (= dot (first u)) (unify (second u) v s)
+      (= dot (first v)) (unify u (second v) s)
+      (seq v) (->> s
+                (unify (first u) (first v))
+                (unify (rest u) (rest v))))))
 
 ;; Extending IReifySubstitution and
 (extend-protocol IReifySubstitution
-  LListCell
-  (reify-s* [v s] (reify-s (lrest v) (reify-s (lfirst v) s))))
+  clojure.lang.Sequential
+  (reify-s* [v s-map]
+    (if (seq v)
+      (reify-s (rest v) (reify-s (first v) s-map))
+      s-map)))
+
 
 ;; Extending IDeepWalk allows
 (extend-protocol IDeepWalk
-  LListCell
-  (deep-walk [v s] (lcons (walk* (lfirst v) s)
-                          (if (lempty? (lrest v))
-                            empty-llist
-                            (walk* (lrest v) s)))))
+  clojure.lang.Sequential
+  (deep-walk [v s-map]
+    (cond
+      (and (= dot (first v))
+           (sequential? (second v)))
+      (walk* (second v) s-map)
 
-;; Add support to the printer for our LList data type.  Print it like
-;; a normal list unless it's an improper list; in that case, use '.'
-;; notation. For example, `(lcons 1 (lcons 2 3))` will print as
-;; `(1 2 . 3)`.
-(defn print-llist [l ^java.io.Writer w]
-  (cond
-    (lempty? l) (do)
-    (lempty? (lrest l)) (print-method (lfirst l) w)
-    (llist? (lrest l)) (do
-                         (print-method (lfirst l) w)
-                         (.write w " ")
-                         (recur (lrest l) w))
-    :default (do (print-method (lfirst l) w)
-                 (.write w " . ")
-                 (print-method (lrest l) w))))
+      (seq v)
+      (cons (walk* (first v) s-map)
+            (walk* (rest v)  s-map))
 
-(defmethod print-method LListCell [l ^java.io.Writer w]
-  (.write w "(") (print-llist l w) (.write w ")"))
-
-(defn seq->llist
-  "A utility function to construct llist a clojure seq."
-  [s]
-  (if (seq s)
-    (lcons (first s) (seq->llist (rest s)))
-    empty-llist))
+      :default v)))
 
 
 ;;; ## Sequence relations
@@ -135,7 +74,9 @@
 (defn conso
   "Relation: *out* is an LList built out of *first* and *rest*"
   [first rest out]
-  (=== (lcons first rest) out))
+  (if (lvar? rest)
+    (=== [first dot rest] out)
+    (=== (cons first rest) out)))
 
 (defn firsto
   "Relation: *out* is an LList whose first element is *first*"
@@ -152,7 +93,7 @@
 (defn emptyo
   "Relation: *x* is the empty LList"
   [x]
-  (=== empty-llist x))
+  (=== '() x))
 
 (defn repeato [n out]
   (conde
