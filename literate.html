@@ -2866,87 +2866,87 @@ net.brehaut.ClojureTools = (function (SH) {
   };
 })(SyntaxHighlighter);
 </script><title>micro-logic -- Marginalia</title></head><body><table><tr><td class="docs"><div class="header"><h1 class="project-name"><a href="http://example.com/FIXME">micro-logic</a></h1><h2 class="project-version">0.1.0-SNAPSHOT</h2><br /><p>FIXME: write description</p>
-</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.6.0</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#micro-logic.core">micro-logic.core</a></li><li><a href="#micro-logic.protocols">micro-logic.protocols</a></li><li><a href="#micro-logic.sequence">micro-logic.sequence</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#micro-logic.core" name="micro-logic.core"><h1 class="project-name">micro-logic.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><h1>microLogic</h1>
+</div><div class="dependencies"><h3>dependencies</h3><table><tr><td class="dep-name">org.clojure/clojure</td><td class="dotted"><hr /></td><td class="dep-version">1.6.0</td></tr></table></div></td><td class="codes" style="text-align: center; vertical-align: middle;color: #666;padding-right:20px"><br /><br /><br />(this space intentionally left almost blank)</td></tr><tr><td class="docs"><div class="toc"><a name="toc"><h3>namespaces</h3></a><ul><li><a href="#micro-logic.core">micro-logic.core</a></li><li><a href="#micro-logic.protocols">micro-logic.protocols</a></li><li><a href="#micro-logic.sequence">micro-logic.sequence</a></li></ul></div></td><td class="codes">&nbsp;</td></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#micro-logic.core" name="micro-logic.core"><h1 class="project-name">micro-logic.core</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs"><p>This is a logic programming system embedded in Clojure. It's made
+of a few simple pieces, some surprising in their depth; we'll
+examine them each in turn, then put them together and show how to
+do some logic programming with the result.</p>
 
-<p>A literate Clojure implementation of microKanren.</p>
+<h2>Audience</h2>
 
-<p>It may also be a suitable base for experimenting with new logic
-programming ideas, because of its simplicity.</p>
+<p>This literate program is written for any Clojure programmer who
+wants to know more about logic programming. You don't need a
+particularly deep knowledge of logic programming going into this,
+but it may help to have gone through a tutorial or two so you can
+recognize the end when we get there.</p>
 
-<h2>Differences from microKanren</h2>
+<h2>Overview</h2>
 
-<p>Polymorphic dispatch via protocols is used in place of <code>(cond)</code> with
-type checks, where possible.</p>
+<p>We'll start by defining <a href="#lvars"><em>logic variables</em></a> (<em>lvars</em>) and
+<a href="#substitutions"><em>substition maps</em></a>. An lvar is a variable which
+gets a value through an entry in the subsitution map. We then
+define a <a href="#walk"><em>walk</em></a> function to get the value of an lvar out
+of an existing substitution map.</p>
 
-<p>Clojure-native datatypes are used where appropriate
-- The substitution map is a clojure map instead of an alist
-- There is an LVar defrecrord, instead of using a vector of c
-- We have an explicit StreamNode data type, rather building on the
-  built-in list type
-- Clojure doesn't allow improper lists; LListCell is a linked list
-  which does.</p>
+<p>With those in place, we can define the <a href="#unification"><em>unifier</em></a>, a
+way to declare that two terms (which may include lvars) must be
+equal and to compute what substitution map must be used to make
+them equal.</p>
 
-<p>Many names have changed to be more clojure-like:</p>
+<p>We then take a left turn into the most remarkable poart of
+miniKanren, its definition of <a href="#streams"><em>lazy streams</em></a>. These are
+unordered streams that can be composed together in a fair way: no
+one stream will monopolize all computing resources, instead
+interleaving its computation and its results with other streams it
+has been combined with.</p>
 
-<pre><code>|uKanren | microLogic          |
-|--------|---------------------|
-|mplus   | merge-streams       |
-|bind    | mapcat-stream       |
-|pull    | realize-stream-head |
-|mzero   | empty-stream        |
-|unit    | stream              |
-|Zzz     | delay-goal          |
-|conj    | lconj               |
-|disj    | ldisj               |
-|==      | ===                 |
-</code></pre>
+<p>The above are the primitive elements; we can use them to start to
+define the actual logic interpreter.  We begin with a definition of
+<a href="#goals"><em>interpreter state</em></a>, (which contains the current
+substitution map and some other book-keeping information).</p>
 
-<h2>Differences from core.logic</h2>
+<p>Then we can create <a href="#goals"><em>goal</em></a> functions, which take a
+prexisting interpreter state and return a stream of possible
+interpreter states which meet the goal's constraints.  Several
+useful <em>goal constructors</em> are defined: <em>===</em> (unify), <em>ldisj</em>
+(logical or), <em>lconj</em> (logical and), <em>call-fresh</em> (call a function
+with a newly allocated lvar) and some extended utilities.</p>
 
-<pre><code>|core.logic | microLogic           |
-|-----------|----------------------|
-|mplus      | merge-streams        |
-|bind       | mapcat-stream        |
-|pull       | realize-stream-head  |
-|mzero      | empty-stream         |
-|unit       | stream               |
-|==         | ===                  |
-|LCons      | LListCell            |
-</code></pre>
+<p>To translate streams of interpreter states (the output of each goal
+function) to something more useful, we implement a
+<a href="#reify"><em>reify</em></a> function that extract the desired information
+from each state.</p>
 
-<h2>References</h2>
+<p>Finally, we put the pieces together to define the
+<a href="#programmerInterface">programmer interface</a>: the <em>run</em> and <em>run</em>*
+macros, <em>conde</em> and <em>fresh</em>, which will be familiar to any core.logic
+or minikanren programmer.</p>
 
-<ul>
-<li>This is largely based on <a href="http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf">microKanren</a>, a minimal version of miniKanren</li>
-<li>The microKanren <a href="https://github.com/jasonhemann/microKanren">scheme implementation</a></li>
-<li><a href="https://github.com/clojure/core.logic">core.logic</a>, Clojure's real miniKanren implementation</li>
-<li>Will Byrd's <a href="https://github.com/webyrd/dissertation-single-spaced/raw/master/thesis.pdf">dissertation on miniKanren</a></li>
-</ul>
-</td><td class="codes"></td></tr><tr><td class="docs">
+<h3>Extensibility</h3>
+
+<p>We use Clojure's protocols in defining many of the above functions, in a bid
+to make the core logic system extensible to new data structures. (this is
+similar to core.logic) By way of example, and also to be able to do some
+useful logic programming, extend the core to support sequences.</p>
+
+<p>First we have to define a custom linked-list type. Clojure doesn't
+support 'improper lists', which are very useful for this
+application.  We then extend the unifier and the reifier to support
+this type and define the basic miniKanren sequence goals using it.
+(<em>conso</em>, <em>firsto</em>, <em>resto</em>, <em>emptyo</em>)</p>
+
+<hr>
 </td><td class="codes"><pre class="brush: clojure">(ns micro-logic.core
-  (:require [micro-logic.protocols :refer :all]))</pre></td></tr><tr><td class="docs"><h2>Common variables</h2>
-
-<ul>
-<li><em>c</em> The id of an lvar</li>
-<li><em>s</em> A substitution map. Keys are lvars, values are either lvars or values.</li>
-<li><em>u, v</em> Either an lvar or a literal value. Unification terms, more precisely.</li>
-<li><em>g</em> A goal function. Given a substition map, produce a stream of substitution maps.</li>
-<li><em>gc</em> Goal constructor function.</li>
-<li><em>$</em> A stream: either a function, an lcons, or nil.</li>
-<li><em>st</em> A state: holds a substitution map and the id of the next unallocated lvar.</li>
-</ul>
-</td><td class="codes"></td></tr><tr><td class="docs"><h2>Logic Variables</h2>
+  (:require [micro-logic.protocols :refer :all]))</pre></td></tr><tr><td class="docs"><h2><a name="lvars"></a>Logic Variables</h2>
 
 <p>Logic variables (lvars for short) are the unknown items that will
-be given a value by the unifier. Each of them has an id (<em>c</em>); this
-is a number which is assigned when a new variable is allocated by
-(fresh). The interpreter state stores the next id to use.</p>
-</td><td class="codes"><pre class="brush: clojure">(defrecord LVar [c])
-(defn lvar [c] (LVar. c))
-(defn lvar? [x] (instance? LVar x))</pre></td></tr><tr><td class="docs"><h2>Substitutions and Walking</h2>
+be given a value by the unifier. Each of them has an id; this
+is a number which is assigned when a new variable is allocated.</p>
+</td><td class="codes"><pre class="brush: clojure">(defrecord LVar [id])
+(defn lvar [id] (LVar. id))
+(defn lvar? [x] (instance? LVar x))</pre></td></tr><tr><td class="docs"><h2><a name="substitutions"></a><a name="walk"></a>Substitutions and Walking</h2>
 
-<p>A substitution map (<em>s</em>) gives mappings from logic variables to
-their values.</p>
+<p>A substitution map (<em>s-map</em>) is a hash-map that gives
+mappings from logic variables to their values.</p>
 
 <p>To see what value an lvar is bound to in a given substitution map,
 use <code>(walk u s)</code>. (<em>u</em> is an lvar or a value) Supposing <em>a</em> and <em>b</em>
@@ -2971,14 +2971,17 @@ substitution map.  In this case, the variable itself is returned,
 indicating that the variable is currently unbound.</p>
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IWalk
   LVar
-  (walk [u s] (if-let [val (get s u)]
-                (recur val s)
-                u))
+  (walk [u s-map] (if-let [val (get s-map u)]
+                    (recur val s-map)
+                    u))
   Object
-  (walk [u s] u)
+  (walk [u s-map] u)
 
   nil
-  (walk [u s] nil))</pre></td></tr><tr><td class="docs"><h1>Unification</h1>
+  (walk [u s-map] nil))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn add-substitution [s-map lvar value]
+  (when s-map
+    (assoc s-map lvar value)))</pre></td></tr><tr><td class="docs"><h2><a name="unification"></a>Unification</h2>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Given two terms <em>u</em> and <em>v</em>, and an existing substitution map <em>s</em>,
   unify produces a new substitution map with mappings that will make u
   and v equal.</p>
@@ -2992,28 +2995,26 @@ indicating that the variable is currently unbound.</p>
   unifier.  this includes lvars, regular values, and values of any
   type to which you have extended IUnifyTerms. </p>
 </td><td class="codes"><pre class="brush: clojure">(defn unify
-  [u v s]
-  (let [u (walk u s),        v (walk v s)
+  [u v s-map]
+  (let [u (walk u s-map),    v (walk v s-map)
         u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
     (cond
-      ;; Unifying two lvars adds no information
-      (and u-is-lvar v-is-lvar (= u v)) s
-      ;; Unifying an lvar with some other value creates a new substitution
-      u-is-lvar (assoc s u v)
-      v-is-lvar (assoc s v u)
+      ;; Unifying two lvars adds no information to the substitution map
+      (and u-is-lvar v-is-lvar (= u v)) s-map
+      ;; Unifying an lvar with some other value creates a new entry in
+      ;; the substitution map
+      u-is-lvar (add-substitution s-map u v)
+      v-is-lvar (add-substitution s-map v u)
+      ;; two not-lvar but equal structures unify
+      (= u v) s-map
       ;; Unifying two non-lvars is delegated to the polymorphic
-      ;; `unify-terms` function.
-      :default (unify-terms u v s))))</pre></td></tr><tr><td class="docs"><p>If there is no more specific definition, unificiation between two
-values should at least succeed if they are equal. Return nil if
-they are not, indiciating that the terms cannot be unified.</p>
+      ;; `unify-terms` function, from IUnifyTerms.
+      :default (unify-terms u v s-map))))</pre></td></tr><tr><td class="docs"><p>If we get dispatched to either of these definitions, we know that neither
+u or v is an lvar, that they aren't equal, and we aren't doing some kind
+of structural comparison defined elsewhere. They must not unify.</p>
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IUnifyTerms
-  Object
-  (unify-terms [u v s]
-    (if (= u v) s))
-
-  nil
-  (unify-terms [u v s]
-    (if (= u v) s)))</pre></td></tr><tr><td class="docs"><h1>Streams</h1>
+  Object (unify-terms [u v s-map] nil)
+  nil    (unify-terms [u v s-map] nil))</pre></td></tr><tr><td class="docs"><h1><a name="streams"></a>Lazy Streams</h1>
 
 <p>The lazy stream mechanism is one of the really interesting parts
 about miniKanren. It's different from regular scheme linked lists
@@ -3048,9 +3049,10 @@ along the way.</li>
 </ul>
 </td><td class="codes"><pre class="brush: clojure">(def empty-stream
   (reify IStream
-    (merge-streams [$1 $2] $2)
-    (mapcat-stream [$ g] $)
-    (realize-stream-head [$] $)))</pre></td></tr><tr><td class="docs"><h3>Mature streams (StreamNode)</h3>
+    (merge-streams [stream-1 stream-2] stream-2)
+    (mapcat-stream [stream g] stream)
+    (realize-stream-head [stream] stream)
+    (stream-to-seq [stream] '())))</pre></td></tr><tr><td class="docs"><h3>Mature streams (StreamNode)</h3>
 
 <p>A head-realized streams is represented by an instance of StreamNode.
 This is kind of like a linked list: <code>head</code> is the realized value that
@@ -3063,11 +3065,12 @@ streams), merge-streams is equivalent to <code>concat</code> and
 <code>mapcat-stream</code> to <code>mapcat</code>.</p>
 </td><td class="codes"><pre class="brush: clojure">(deftype StreamNode [head next]
   IStream
-  (merge-streams [$1 $2] (StreamNode. head
-                                      (merge-streams next $2)))
-  (mapcat-stream [$ g] (merge-streams (g head)
+  (merge-streams [stream-1 stream-2] (StreamNode. head
+                                      (merge-streams next stream-2)))
+  (mapcat-stream [stream g] (merge-streams (g head)
                                       (mapcat-stream next g)))
-  (realize-stream-head [$] $))</pre></td></tr><tr><td class="docs"><h3>Immature streams (IFn)</h3>
+  (realize-stream-head [stream] stream)
+  (stream-to-seq [stream] (lazy-seq (cons head (stream-to-seq next)))))</pre></td></tr><tr><td class="docs"><h3>Immature streams (IFn)</h3>
 
 <p>An immature (head-unrealized) stream is represented by a thunk (a
 function of no arguments).</p>
@@ -3083,13 +3086,13 @@ many times until you get down to a realized value. This is exactly what
 interleaving. Let's examine the definition:</p>
 
 <pre><code>clojure.lang.IFn
-(merge-streams [$1 $2] #(merge-streams $2 ($1)))
+(merge-streams [stream-1 stream-2] #(merge-streams stream-2 (stream-1)))
 </code></pre>
 
-<p>Working from the inside out: we know that $1 is a function because
+<p>Working from the inside out: we know that stream-1 is a function because
 we're extending IStream onto IFn; calling it will perform one 'step
 of computation', whatever that might be. It returns a stream.
-Then we merge that stream with $2, the second parameter of this merge operation,
+Then we merge that stream with stream-2, the second parameter of this merge operation,
 <em>but the order is reversed</em>.</p>
 
 <p>Finally, the above operation is all wrapped in a thunk. So we end up with a
@@ -3120,7 +3123,7 @@ with at the head.</li>
 <p>mapcat-stream is somewhat simpler.</p>
 
 <pre><code>clojure.lang.IFn
-(mapcat-stream [$ g] #(mapcat-stream ($) g))
+(mapcat-stream [stream g] #(mapcat-stream (stream) g))
 </code></pre>
 
 <p>The basic concept here is pretty straightforward: make a new thunk which,
@@ -3129,26 +3132,18 @@ when executed later, will do some work and then mapcat <code>g</code> over the r
 <p>TODO: explain why this needs to be wrapped in a thunk</p>
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IStream
   clojure.lang.IFn
-  (merge-streams [$1 $2] #(merge-streams $2 ($1)))
-  (mapcat-stream [$ g] #(mapcat-stream ($) g))
-  (realize-stream-head [$] (trampoline $)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn stream [s] (StreamNode. s empty-stream))</pre></td></tr><tr><td class="docs"><h4>Seq conversion</h4>
-
-<p>We of course like to deal with lazy sequences in clojure, and it's
-fairly straightforward to convert it. Running realize-stream-head
-bounces the trampoline until a result comes out, at which point we
-can give it to the caller.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn stream-to-seq [$]
-  (lazy-seq
-   (let [$' (realize-stream-head $)]
-     (if (= empty-stream $')
-       '()
-       (cons (.head $') (stream-to-seq (.next $')))))))</pre></td></tr><tr><td class="docs"><h2>Goals</h2>
+  (merge-streams [stream-1 stream-2] #(merge-streams stream-2 (stream-1)))
+  (mapcat-stream [stream g] #(mapcat-stream (stream) g))
+  (realize-stream-head [stream] (trampoline stream))
+  (stream-to-seq [stream] (stream-to-seq (realize-stream-head stream))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn make-stream [s] (StreamNode. s empty-stream))</pre></td></tr><tr><td class="docs"><h2><a name="goals"></a>Goals</h2>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>A <em>state</em> is a record containing a substitution map <em>s</em> and the id
-of the next unbound logic variable <em>c</em>.</p>
-</td><td class="codes"><pre class="brush: clojure">(defrecord State [s c])
-(defn state [s c] (State. s c))
-(def empty-state (state {} 0))</pre></td></tr><tr><td class="docs"><p>A goal is a function which, given a state, returns a stream of
+of the next unbound <em>next-id</em>.</p>
+</td><td class="codes"><pre class="brush: clojure">(defrecord State [s-map next-id])
+(defn make-state [s-map next-id] (State. s-map next-id))
+(def empty-state (make-state {} 0))
+(defn with-s-map [state s-map] (assoc state :s-map s-map))
+(defn with-next-id [state next-id] (assoc state :next-id next-id))</pre></td></tr><tr><td class="docs"><p>A goal is a function which, given a state, returns a stream of
 states. Conceptually, it encodes some constraints. Give it an input
 state, and it will give you one output state for each way it can
 meet those constraints.</p>
@@ -3159,32 +3154,32 @@ it.</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><h3>Basic goal constructors</h3>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Given two terms u and v, create a goal that will unify them. The
   goal takes an existing state and returns either a state with
-  bindings for lvars in u and v (using <code>unify</code>), or returns the empty
+  bindings for the lvars in u and v (using <code>unify</code>), or returns the empty
   stream if no such state exists. </p>
 </td><td class="codes"><pre class="brush: clojure">(defn ===
   [u v]
-  (fn unify-goal [st]
-    (if-let [s' (unify u v (.s st))]
-      (stream (state s' (.c st)))
-      empty-stream)))</pre></td></tr><tr><td class="docs"><p>Wrap the goal constructor <em>gc</em>, a function of a single lvar, in a
+  (fn unify-goal [{:keys [s-map] :as state}]
+    (if-let [s-map' (unify u v s-map)]
+      (make-stream (with-s-map state s-map'))
+      empty-stream)))</pre></td></tr><tr><td class="docs"><p>Wrap <em>goal-custructor</em>, a function of a single lvar, in a
   goal that allocates a new lvar from its state parameter and passes
-  it to <em>gc</em>.</p>
+  it to <em>goal-constructor</em>.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn call-fresh
-  [gc]
-  (fn fresh-goal [st]
-    (let [c (.c st)]
-     ((gc (lvar c)) (state (.s st) (inc c))))))</pre></td></tr><tr><td class="docs"><p>Logical disjuction ('or'). Construct a new goal that succeeds
-  whenever <em>g1</em> or <em>g2</em> succeed. <code>merge-streams</code> is used on each
+  [goal-constructor]
+  (fn fresh-goal [{:keys [s-map next-id] :as state}]
+    (let [goal (goal-constructor (lvar next-id))]
+     (goal (with-next-id state (inc next-id))))))</pre></td></tr><tr><td class="docs"><p>Logical disjuction ('or'). Construct a new goal that succeeds
+  whenever <em>goal-1</em> or <em>goal-2</em> succeed. <code>merge-streams</code> is used on each
   goal's output to ensure fair scheduling between the two.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn ldisj
-  [g1 g2]
-  (fn disj-goal [st]
-    (merge-streams (g1 st) (g2 st))))</pre></td></tr><tr><td class="docs"><p>Logical conjunction ('and'). Construct a new goal that succeeds
-  when both <em>g1</em> and <em>g2</em> succeed.</p>
+  [goal-1 goal-2]
+  (fn disj-goal [state]
+    (merge-streams (goal-1 state) (goal-2 state))))</pre></td></tr><tr><td class="docs"><p>Logical conjunction ('and'). Construct a new goal that succeeds
+  when both <em>goal-1</em> and <em>goal-2</em> succeed.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn lconj
-  [g1 g2]
-  (fn conj-goal [st]
-    (mapcat-stream (g1 st) g2)))</pre></td></tr><tr><td class="docs"><h2>Auxilliary macros</h2>
+  [goal-1 goal-2]
+  (fn conj-goal [state]
+    (mapcat-stream (goal-1 state) goal-2)))</pre></td></tr><tr><td class="docs"><h2>Auxilliary macros</h2>
 
 <p>At this point, we have defined everything we need to do logic
 programming.  But it's very inconvenient; some utility macros make
@@ -3197,20 +3192,50 @@ the task more bearable.</p>
 
 <p>  This is useful for defining recursive goals.</p>
 </td><td class="codes"><pre class="brush: clojure">(defmacro delay-goal
-  [g]
-  `(fn delayed-goal-outer [st#]
-     (fn delayed-goal-inner [] (~g st#))))</pre></td></tr><tr><td class="docs"><p>Extended version of the <code>ldisj</code> function. This one handles multiple
+  [goal]
+  `(fn delayed-goal-outer [state#]
+     (fn delayed-goal-inner [] (~goal state#))))</pre></td></tr><tr><td class="docs"><p>Extended version of the <code>ldisj</code> function. This one handles multiple
   arguments, instead of just two. It also automatically wraps each goal
   with <code>delay-goal</code>, so you don't need to worry about adding them yourself.</p>
 
 <p>  (This does have a performance cost, but speed is not the point of this port)</p>
 </td><td class="codes"><pre class="brush: clojure">(defmacro ldisj+
-  ([g] `(delay-goal ~g))
-  ([g &amp; gs] `(ldisj (delay-goal ~g) (ldisj+ ~@gs))))</pre></td></tr><tr><td class="docs"><p>Like <code>ldisj+</code>, but for <code>lconj</code>.</p>
+  ([goal] `(delay-goal ~goal))
+  ([goal &amp; goals] `(ldisj (delay-goal ~goal) (ldisj+ ~@goals))))</pre></td></tr><tr><td class="docs"><p>Like <code>ldisj+</code>, but for <code>lconj</code>.</p>
 </td><td class="codes"><pre class="brush: clojure">(defmacro lconj+
-  ([g] `(delay-goal ~g))
-  ([g &amp; gs] `(lconj (delay-goal ~g) (lconj+ ~@gs))))</pre></td></tr><tr><td class="docs"><p>The regular miniKanren <code>conde</code> form, a disjunction of
-  conjunctions. Supposing that <em>a</em> and <em>b</em> are lvars,</p>
+  ([goal] `(delay-goal ~goal))
+  ([goal &amp; goals] `(lconj (delay-goal ~goal) (lconj+ ~@goals))))</pre></td></tr><tr><td class="docs"><h2><a name="reify"></a>Reificiation</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>In miniKanren, reification refers to extracting the desired values
+from the stream of states you get as a result of executing a goal.</p>
+</td><td class="codes"><pre class="brush: clojure">(defn reify-name [n]
+  (symbol (str &quot;_.&quot; n)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn reify-s [v s-map]
+  (reify-s* (walk v s-map) s-map))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol IReifySubstitution
+  LVar
+  (reify-s* [v s-map] (let [n (reify-name (count s-map))]
+                        (add-substitution s-map v n)))
+
+  Object
+  (reify-s* [v s-map] s-map)
+
+  nil
+  (reify-s* [v s-map] s-map))</pre></td></tr><tr><td class="docs"><p>Like walk. But instead of simply returning any non-lvar value, will
+attempt to assign values to any lvars embedded in the value.  For
+example, (walk* a {a (1 2 c), c 3)} will give (1 2 3).  (once we
+have the sequence extensions from sequence.clj)</p>
+</td><td class="codes"><pre class="brush: clojure">(defn walk* [v s-map]
+  (deep-walk (walk v s-map) s-map))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(extend-protocol IDeepWalk
+  LVar   (deep-walk [v s-map] v)
+  Object (deep-walk [v s-map] v)
+  nil    (deep-walk [v s-map] v))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn reify-state-first-var [{:keys [s-map]}]
+  (let [v (walk* (lvar 0) s-map)]
+    (walk* v (reify-s v {}))))</pre></td></tr><tr><td class="docs"><h2><a name="interface"></a>Programmer interface</h2>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>The regular miniKanren <code>conde</code> form, a disjunction of
+  conjunctions (an 'or' of 'ands'). Supposing that <em>a</em> and <em>b</em> are
+  lvars,</p>
 
 <pre><code>  (conde
     [(=== a 1) (=== b 2)]
@@ -3223,7 +3248,7 @@ the task more bearable.</p>
   `(ldisj+ ~@(map (fn [clause]
                     `(lconj+ ~@clause))
                   clauses)))</pre></td></tr><tr><td class="docs"><p>Provide a more convenient syntax for <code>call-fresh</code>. <code>fresh</code> lets you
-  declare multiple logic variables and once, and it takes care of the
+  declare multiple logic variables at once, and it takes care of the
   function declaration mechanics for you.</p>
 
 <p>  The body of fresh is passed to <code>lconj+</code>, a logical 'and'.</p>
@@ -3240,48 +3265,16 @@ the task more bearable.</p>
     `(lconj+ ~@clauses)
     `(call-fresh (fn [~(first var-vec)]
                    (fresh [~@(rest var-vec)]
-                     ~@clauses)))))</pre></td></tr><tr><td class="docs"><h2>Reificiation</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>In miniKanren, reification refers to extracting the desired values
-from the stream of states you get as a result of executing a goal.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn reify-name [n]
-  (symbol (str &quot;_.&quot; n)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn reify-s [v s]
-  (reify-s* (walk v s) s))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol IReifySubstitution
-  LVar
-  (reify-s* [v s] (let [n (reify-name (count s))]
-                    (assoc s v n)))
-
-  Object
-  (reify-s* [v s] s))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn walk* [v s]
-  (let [v' (walk v s)]
-    (deep-walk v' s)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(extend-protocol IDeepWalk
-  LVar
-  (deep-walk [v s] v)
-
-  Object
-  (deep-walk [v s] v))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn reify-state-first-var [st]
-  (let [v (walk* (lvar 0) (.s st))]
-    (walk* v (reify-s v {}))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn reify-state-lvar [st lv]
-  (let [v (walk* lv (.s st))]
-    (walk* v (reify-s v {}))))</pre></td></tr><tr><td class="docs"><p>run interface</p>
-</td><td class="codes"></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn call-empty-state [g]
-  (g empty-state))</pre></td></tr><tr><td class="docs"><p>reify-fn: state -> thing you want</p>
-</td><td class="codes"><pre class="brush: clojure">(defmacro basic-run*
-  [reify-fn query-var-vec &amp; gs]
-  `(-&gt;&gt; (fresh [~@query-var-vec] ~@gs)
+                     ~@clauses)))))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn call-empty-state [goal]
+  (goal empty-state))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defmacro run* [fresh-var-vec &amp; goals]
+  `(-&gt;&gt; (fresh [~@fresh-var-vec] ~@goals)
      call-empty-state
      stream-to-seq
-     (map ~reify-fn)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defmacro run* [query-var-vec &amp; gs]
-  `(basic-run* reify-state-first-var [~@query-var-vec] ~@gs))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defmacro run [n query-var-vec &amp; gs]
-  `(take ~n (run* ~query-var-vec ~@gs)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#micro-logic.protocols" name="micro-logic.protocols"><h1 class="project-name">micro-logic.protocols</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
+     (map reify-state-first-var)))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defmacro run [n fresh-var-vec &amp; goals]
+  `(take ~n (run* ~fresh-var-vec ~@goals)))</pre></td></tr><tr><td class="spacer docs">&nbsp;</td><td class="codes" /></tr><tr><td class="docs"><div class="docs-header"><a class="anchor" href="#micro-logic.protocols" name="micro-logic.protocols"><h1 class="project-name">micro-logic.protocols</h1><a class="toc-link" href="#toc">toc</a></a></div></td><td class="codes" /></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(ns micro-logic.protocols)</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defprotocol IWalk
   (walk [u s]))</pre></td></tr><tr><td class="docs">
@@ -3292,7 +3285,8 @@ from the stream of states you get as a result of executing a goal.</p>
 </td><td class="codes"><pre class="brush: clojure">(defprotocol IStream
   (merge-streams [$1 $2])
   (mapcat-stream [$ g])
-  (realize-stream-head [$]))</pre></td></tr><tr><td class="docs">
+  (realize-stream-head [$])
+  (stream-to-seq [$]))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defprotocol IReifySubstitution
   (reify-s* [v s]))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defprotocol ILList
@@ -3306,87 +3300,62 @@ from the stream of states you get as a result of executing a goal.</p>
 support for only lvars and basic values. But it's done in an
 extensible way. We'll now proceed to add sequence support to the
 base language.</p>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Unfortunately, the regular clojure list type isn't sufficient for
-our purposes. There are many cases where we want to unify against
-the tail of a sequence, which means putting an lvar in the tail
-position.  Standard minikanren uses imporoper lists for this. For
-example, <code>(1 . a)</code> may be unified against a with another list to
-match all lists beginning with 1, assigning the suffix to the lvar
-<em>a</em>.</p>
+</td><td class="codes"></td></tr><tr><td class="docs"><p>When we unify sequences, we'd like to be able to indicate that an
+lvar should be associated with the tail of a sequence. In the
+scheme implementation, this is easy: by placing an lvar in the tail
+position of a linked list node (the cdr position of a cons node),
+the unification happens naturally when walking down the list.</p>
 
-<p>We define here the LList (Logic List) type, which is a simple
-linked list without that restriction. It extends
-IPersistentCollection, Sequential, and ISeq so it can interoperate
-with the clojure standard library</p>
-</td><td class="codes"></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(declare empty-llist)</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(deftype LListCell [item next-cell]
-  ILList
-  (lfirst [lc] item)
-  (lrest [lc] next-cell)
-  clojure.lang.IPersistentCollection
-  (seq [self] self)
-  (cons [self o] (LListCell. o self))
-  (empty [self] empty-llist)
-  (equiv [self o] (if (instance? LListCell o)
-                    (and (= item
-                            (lfirst o))
-                         (= next-cell (lrest o)))
-                    false))
-  clojure.lang.Sequential
-  clojure.lang.ISeq
-  (first [self] item)
-  (next [self] (if (instance? LListCell next-cell)
-                 next-cell
-                 (list next-cell)))
-  (more [self] (next self)))</pre></td></tr><tr><td class="docs"><p>Define a constructor and a type-test, which are useful shortcuts
-below.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn lcons [a b] (LListCell. a b))
-(defn llist? [x] (instance? LListCell x))</pre></td></tr><tr><td class="docs"><p>The singleton empty list is an instance of LListCell, to allow it to be dispatched
-with the protocol system.</p>
-</td><td class="codes"><pre class="brush: clojure">(def empty-llist (lcons nil nil))
-(defn lempty? [x] (= empty-llist x))</pre></td></tr><tr><td class="docs"><p>By extending IUnifyTerms, LList is able to participate in
-unification. We use a simple recursive definition to say the
-unifying two sequences means that we unify their elements.</p>
+<p>Since Clojure disallows putting non-list items in linked-list cells
+(so-called 'improper lists'), we have to find another way to do
+it. core.logic solves this problem by defining its own LCons data
+type which does allow improper lists. We take a different approach here.</p>
+
+<p>Whenver you want an improper list in the context of a logic program,
+you can signify it with the 'dot' sigil. For example: <code>[1 2 dot a]</code>.
+This is meant to evoke the Scheme and Common LISP notation for improper
+lists: <code>(1 2 . 3)</code>. This will typically be transparent to the user on
+the programming side, since such lists will be automatically
+constructed by the 'conso' goal below.</p>
+</td><td class="codes"><pre class="brush: clojure">(deftype Dot [])
+(def dot (Dot.))</pre></td></tr><tr><td class="docs"><p>There are times when the user may see an improper list as the
+result of a query. In this case, print the sigil as "."</p>
+</td><td class="codes"><pre class="brush: clojure">(defmethod print-method Dot [l ^java.io.Writer w]
+  (.write w &quot;.&quot;))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IUnifyTerms
-  LListCell
+  clojure.lang.Sequential
   (unify-terms [u v s]
-    (when (llist? v)
-      (-&gt;&gt; s
-        (unify (lfirst u) (lfirst v))
-        (unify (lrest u) (lrest v))))))</pre></td></tr><tr><td class="docs"><p>Extending IReifySubstitution and</p>
+    (cond
+      (= dot (first u)) (unify (second u) v s)
+      (= dot (first v)) (unify u (second v) s)
+      (seq v) (-&gt;&gt; s
+                (unify (first u) (first v))
+                (unify (rest u) (rest v))))))</pre></td></tr><tr><td class="docs"><p>Extending IReifySubstitution and</p>
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IReifySubstitution
-  LListCell
-  (reify-s* [v s] (reify-s (lrest v) (reify-s (lfirst v) s))))</pre></td></tr><tr><td class="docs"><p>Extending IDeepWalk allows</p>
+  clojure.lang.Sequential
+  (reify-s* [v s-map]
+    (if (seq v)
+      (reify-s (rest v) (reify-s (first v) s-map))
+      s-map)))</pre></td></tr><tr><td class="docs"><p>Extending IDeepWalk allows</p>
 </td><td class="codes"><pre class="brush: clojure">(extend-protocol IDeepWalk
-  LListCell
-  (deep-walk [v s] (lcons (walk* (lfirst v) s)
-                          (walk* (lrest v) s))))</pre></td></tr><tr><td class="docs"><p>Add support to the printer for our LList data type.  Print it like
-a normal list unless it's an improper list; in that case, use '.'
-notation. For example, <code>(lcons 1 (lcons 2 3))</code> will print as
-<code>(1 2 . 3)</code>.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn print-llist [l ^java.io.Writer w]
-  (cond
-    (lempty? l) (do)
-    (lempty? (lrest l)) (print-method (lfirst l) w)
-    (llist? (lrest l)) (do
-                         (print-method (lfirst l) w)
-                         (.write w &quot; &quot;)
-                         (recur (lrest l) w))
-    :default (do (print-method (lfirst l) w)
-                 (.write w &quot; . &quot;)
-                 (print-method (lrest l) w))))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defmethod print-method LListCell [l ^java.io.Writer w]
-  (.write w &quot;(&quot;) (print-llist l w) (.write w &quot;)&quot;))</pre></td></tr><tr><td class="docs"><p>A utility function to construct llist a clojure seq.</p>
-</td><td class="codes"><pre class="brush: clojure">(defn seq-&gt;llist
-  [s]
-  (if (seq s)
-    (lcons (first s) (seq-&gt;llist (rest s)))
-    empty-llist))</pre></td></tr><tr><td class="docs"><h2>Sequence relations</h2>
+  clojure.lang.Sequential
+  (deep-walk [v s-map]
+    (cond
+      (and (= dot (first v))
+           (sequential? (second v)))
+      (walk* (second v) s-map)
+
+      (seq v)
+      (cons (walk* (first v) s-map)
+            (walk* (rest v)  s-map))
+
+      :default v)))</pre></td></tr><tr><td class="docs"><h2>Sequence relations</h2>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Relation: <em>out</em> is an LList built out of <em>first</em> and <em>rest</em></p>
 </td><td class="codes"><pre class="brush: clojure">(defn conso
   [first rest out]
-  (=== (lcons first rest) out))</pre></td></tr><tr><td class="docs"><p>Relation: <em>out</em> is an LList whose first element is <em>first</em></p>
+  (if (lvar? rest)
+    (=== [first dot rest] out)
+    (=== (cons first rest) out)))</pre></td></tr><tr><td class="docs"><p>Relation: <em>out</em> is an LList whose first element is <em>first</em></p>
 </td><td class="codes"><pre class="brush: clojure">(defn firsto
   [first out]
   (fresh [rest]
@@ -3397,7 +3366,7 @@ notation. For example, <code>(lcons 1 (lcons 2 3))</code> will print as
     (conso first rest out)))</pre></td></tr><tr><td class="docs"><p>Relation: <em>x</em> is the empty LList</p>
 </td><td class="codes"><pre class="brush: clojure">(defn emptyo
   [x]
-  (=== empty-llist x))</pre></td></tr><tr><td class="docs">
+  (=== '() x))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn repeato [n out]
   (conde
     [(emptyo out)]
