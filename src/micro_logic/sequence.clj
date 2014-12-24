@@ -1,36 +1,35 @@
+
+;; COMMENT Header
+
 (ns micro-logic.sequence
   (:require [micro-logic.core :refer :all]
             [micro-logic.protocols :refer :all]))
 
-;; ## Sequence support
-;;
-;; The base logic programming system has unification and reification
-;; support for only lvars and basic values. But it's done in an
-;; extensible way. We'll now proceed to add sequence support to the
-;; base language.
+;; Extending the core
+;; When we unify sequences, we'd like to be able to indicate that an lvar
+;; should be associated with the tail of a sequence. In the scheme
+;; implementation, this is easy: by placing an lvar in the tail position
+;; of a linked list node (the cdr position of a cons node), the
+;; unification happens naturally when walking down the list.
 
-;; When we unify sequences, we'd like to be able to indicate that an
-;; lvar should be associated with the tail of a sequence. In the
-;; scheme implementation, this is easy: by placing an lvar in the tail
-;; position of a linked list node (the cdr position of a cons node),
-;; the unification happens naturally when walking down the list.
-;;
 ;; Since Clojure disallows putting non-list items in linked-list cells
 ;; (so-called 'improper lists'), we have to find another way to do
-;; it. core.logic solves this problem by defining its own LCons data
-;; type which does allow improper lists. We take a different approach here.
-;;
+;; it. core.logic solves this problem by defining its own LCons data type
+;; which does allow improper lists. We take a different approach here.
+
 ;; Whenver you want an improper list in the context of a logic program,
-;; you can signify it with the 'dot' sigil. For example: `[1 2 dot a]`.
-;; This is meant to evoke the Scheme and Common LISP notation for improper
-;; lists: `(1 2 . 3)`. This will typically be transparent to the user on
-;; the programming side, since such lists will be automatically
+;; you can signify it with the 'dot' sigil. For example: ~[1 2 dot a]~.
+;; This is meant to evoke the Scheme and Common LISP notation for
+;; improper lists: ~(1 2 . 3)~. This will typically be transparent to the
+;; user on the programming side, since such lists will be automatically
 ;; constructed by the 'conso' goal below.
+
 (deftype Dot [])
 (def dot (Dot.))
 
-;; There are times when the user may see an improper list as the
-;; result of a query. In this case, print the sigil as "."
+;; There are times when the user may see an improper list as the result
+;; of a query. In this case, print the sigil as "."
+
 (defmethod print-method Dot [l ^java.io.Writer w]
   (.write w "."))
 
@@ -68,8 +67,7 @@
 
       :default v)))
 
-
-;;; ## Sequence relations
+;; Sequence relations
 
 (defn conso
   "Relation: *out* is an LList built out of *first* and *rest*"
