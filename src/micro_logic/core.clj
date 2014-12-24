@@ -149,21 +149,19 @@
       u-is-lvar (add-substitution s-map u v)
       v-is-lvar (add-substitution s-map v u)
 
+      ;; two not-lvar but equal structures unify
+      (= u v) s-map
+
       ;; Unifying two non-lvars is delegated to the polymorphic
       ;; `unify-terms` function, from IUnifyTerms.
       :default (unify-terms u v s-map))))
 
-;; If there is no more specific definition, unificiation between two
-;; values should at least succeed if they are equal. Return nil if
-;; they are not, indiciating that the terms cannot be unified.
+;; If we get dispatched to either of these definitions, we know that neither
+;; u or v is an lvar, that they aren't equal, and we aren't doing some kind
+;; of structural comparison defined elsewhere. They must not unify.
 (extend-protocol IUnifyTerms
-  Object
-  (unify-terms [u v s-map]
-    (if (= u v) s-map))
-
-  nil
-  (unify-terms [u v s-map]
-    (if (= u v) s-map)))
+  Object (unify-terms [u v s-map] nil)
+  nil    (unify-terms [u v s-map] nil))
 
 
 
