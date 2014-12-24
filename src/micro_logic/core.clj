@@ -118,6 +118,10 @@
   nil
   (walk [u s-map] nil))
 
+(defn add-substitution [s-map lvar value]
+  (when s-map
+    (assoc s-map lvar value)))
+
 ;; ## <a name="unification"></a>Unification
 
 (defn unify
@@ -142,8 +146,8 @@
 
       ;; Unifying an lvar with some other value creates a new entry in
       ;; the substitution map
-      u-is-lvar (assoc s-map u v)
-      v-is-lvar (assoc s-map v u)
+      u-is-lvar (add-substitution s-map u v)
+      v-is-lvar (add-substitution s-map v u)
 
       ;; Unifying two non-lvars is delegated to the polymorphic
       ;; `unify-terms` function, from IUnifyTerms.
@@ -389,9 +393,12 @@
 (extend-protocol IReifySubstitution
   LVar
   (reify-s* [v s-map] (let [n (reify-name (count s-map))]
-                        (assoc s-map v n)))
+                        (add-substitution s-map v n)))
 
   Object
+  (reify-s* [v s-map] s-map)
+
+  nil
   (reify-s* [v s-map] s-map))
 
 
