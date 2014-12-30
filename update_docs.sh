@@ -1,6 +1,10 @@
 #!/bin/sh
 emacs -eval '(progn (find-file "literate.org") (org-html-export-to-html))' -kill
+mv literate.html new.html
+
 git co gh-pages
+
+mv new.html literate.html
 
 rm -f index.md
 echo "---" >> index.md
