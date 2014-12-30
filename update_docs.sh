@@ -1,13 +1,12 @@
-lein marg
+#!/bin/sh
+emacs -eval '(progn (find-file "literate.org") (org-html-export-to-html))' -kill
 git co gh-pages
 
-rm index.md
+rm -f index.md
 echo "---" >> index.md
 echo "layout: index" >> index.md
 echo "---" >> index.md
 git show master:README.md >> index.md
-
-mv docs/uberdoc.html literate.html
 
 git add index.md
 git add literate.html
