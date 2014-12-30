@@ -6,6 +6,7 @@ largely based on microKanren, an even more minimalistic version of
 miniKanren.  For more information, see the bibliography at the bottom
 of the above document.
 
+[![Build Status](https://travis-ci.org/mullr/micrologic.svg?branch=master)](https://travis-ci.org/mullr/micrologic)
 
 ## License
 
