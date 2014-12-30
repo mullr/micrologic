@@ -92,8 +92,8 @@
              (run 5 [q] (fives-and-sixes q))))
       ))
 
-  (testing "walk*"
-    (are [lvar s-map, value] (= value (walk* lvar s-map))
+  (testing "deep-walk"
+    (are [lvar s-map, value] (= value (deep-walk lvar s-map))
 
          a {},        a
          a {a 2},     2
