@@ -33,6 +33,20 @@
 (defmethod print-method Dot [l ^java.io.Writer w]
   (.write w "."))
 
+;; The first extension point is the unifier; we need to define what it means
+;; to unify a sequence with something else.
+
+;; The basic case is simple: if unifying a sequence with another sequence,
+;; then we should unify each element together. Recursively, this means unifying
+;; their first elements and then the rest of the sequence.
+
+;; The unifier also needs to be aware of the dot-notation described
+;; above. If either /u/ or /v/ is a sequence beginning with a dot, the
+;; its second item must be an lvar which should be unified with the other
+;; variable. For example, if we start with ~(=== [1 2 3] [1 . a])~, it
+;; will recurse down to ~(=== [2 3] [. a])~. Detecting that, we can call
+;; ~(=== [2 3] a)~, which gives the desired result.
+
 (extend-protocol IUnifyTerms
   clojure.lang.Sequential
   (unify-terms [u v s]
@@ -43,7 +57,11 @@
                 (unify (first u) (first v))
                 (unify (rest u) (rest v))))))
 
-;; Extending IReifySubstitution and
+;; Next, we need to extend the reifier. When calling reify-s, we need to
+;; look for occurences of logic variables inside of given paramter. This
+;; extends reify-s to make a recursive call on the first element of the
+;; sequence, then on the remaining elements.
+
 (extend-protocol IReifySubstitution
   clojure.lang.Sequential
   (reify-s* [v s-map]
@@ -51,27 +69,28 @@
       (reify-s (rest v) (reify-s (first v) s-map))
       s-map)))
 
+;; Deep-walk needs to be extended as well. As above, we we handle
+;; sequences beginning with 'dot' as a special case, go recursing back
+;; with the second item of the sequence.  For any other sequences, we
+;; effectively map the deep-walk function over the sequence.
 
-;; Extending IDeepWalk allows
 (extend-protocol IDeepWalk
   clojure.lang.Sequential
-  (deep-walk [v s-map]
+  (deep-walk* [v s-map]
     (cond
       (and (= dot (first v))
            (sequential? (second v)))
-      (walk* (second v) s-map)
+      (deep-walk (second v) s-map)
 
       (seq v)
-      (cons (walk* (first v) s-map)
-            (walk* (rest v)  s-map))
+      (cons (deep-walk (first v) s-map)
+            (deep-walk (rest v)  s-map))
 
       :default v)))
 
 ;; Sequence relations
 
-(defn conso
-  "Relation: *out* is an LList built out of *first* and *rest*"
-  [first rest out]
+(defn conso [first rest out]
   (if (lvar? rest)
     (=== [first dot rest] out)
     (=== (cons first rest) out)))
@@ -93,17 +112,10 @@
   [x]
   (=== '() x))
 
-(defn repeato [n out]
+(defn appendo [seq1 seq2 out]
   (conde
-    [(emptyo out)]
-    [(fresh [rest]
-       (conso n rest out)
-       (repeato n rest))]))
-
-(defn iterateo [gc x]
-  (conde
-    [(emptyo x)]
-    [(fresh [val rest]
-       (gc val)
-       (conso val rest x)
-       (iterateo gc rest))]))
+    [(emptyo seq1) (=== seq2 out)]
+    [(fresh [first rest rec]
+       (conso first rest seq1)
+       (conso first rec out)
+       (appendo rest seq2 rec))]))

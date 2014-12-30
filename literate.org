@@ -1,64 +1,19 @@
-#+title: miniLogic
+#+title: microLogic
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://thomasf.github.io/solarized-css/solarized-light.min.css" />
 
 * Introduction
-This is a logic programming system embedded in Clojure. It's made
-of a few simple pieces, some surprising in their depth; we'll
-examine them each in turn, then put them together and show how to
-do some logic programming with the result.
+This is a literate implementation of miniKanren, a logic programming
+system.  It's meant to be an introduction to the inner workings of
+miniKanren and and of core.logic.
 
-microLogic is derived substantially from microKanren; for more
-information, see the links on the associated github page.
+For maximum enjoyment, the reader should be familiar with Clojure, and
+in particular with protocols. In lieu of that, basic understanding of
+lisp syntax and a read through something like
+http://clojure-doc.org/articles/language/polymorphism.html should be
+sufficient.
 
-** Audience
-This literate program is written for any Clojure programmer who
-wants to know more about logic programming. You don't need a
-particularly deep knowledge of logic programming going into this,
-but it may help to have gone through a tutorial or two so you can
-recognize the end when we get there.
-
-** Overview
-We'll start by defining /logic variables/ (/lvars/) and /substition
-maps/. An lvar is a variable which gets a value through an entry in
-the subsitution map. We then define a /walk/ function to get the value
-of an lvar out of an existing substitution map.
-
-With those in place, we can define the /unifier/, a way to declare
-that two terms (which may include lvars) must be equal and to compute
-what substitution map must be used to make them equal.
-
-We then take a left turn into the most remarkable poart of miniKanren,
-its definition of /lazy streams/. These are unordered streams that can
-be composed together in a fair way: no one stream will monopolize all
-computing resources, instead interleaving its computation and its
-results with other streams it has been combined with.
-
-The above are the primitive elements; we can use them to start to
-define the actual logic interpreter.  We begin with a definition of
-/interpreter state/, (which contains the current substitution map and
-some other book-keeping information).
-
-Then we can create /goal/ functions, which take a prexisting
-interpreter state and return a stream of possible interpreter states
-which meet the goal's constraints.  Several useful /goal constructors/
-are defined: ===== (unify), /ldisj/ (logical or), /lconj/ (logical
-and), /call-fresh/ (call a function with a newly allocated lvar), and
-some extended utilities.
-
-To translate streams of interpreter states (the output of each goal
-function) to something more useful, we implement a /reify/)
-function that extracts the desired information from each state.
-
-Finally, we put the pieces together to define the programmer
-interface: the /run/ and /run*/ macros, /conde/ and /fresh/, which
-will be familiar to any core.logic or minikanren programmer.
-
-*** Extensibility
-
-We use Clojure's protocols in defining many of the above functions, in a bid
-to make the core logic system extensible to new data structures. (this is
-similar to core.logic) By way of example, and also to be able to do some
-useful logic programming, we extend the core to support sequences.
+This code was derived substantially from microKanren; for more
+information, see the bibliography at the end.
 
 * Relational core
 ** COMMENT Header
@@ -68,9 +23,20 @@ useful logic programming, we extend the core to support sequences.
 #+end_src
 
 ** Logic Variables
-Logic variables (lvars for short) are the unknown items that will be
-given a value by the unifier. Each of them has an id; this is a number
-which is assigned when a new variable is allocated.
+The purpose of a logic program is to takes an expression with some
+unknowns in it and try to find values for those unknowns. Here's an
+example logic program in English with an unknown /x/:
+
+#+begin_quote
+  Either x is the beginning of the list ["banana", "orange", "apple"],
+  or x is the number 1.
+#+end_quote
+
+(The two values of /x/ that make this expression succeed are ~1~ and ~banana~)
+
+These unknowns are called /logic variables/, or /lvars/ for
+short. Since we're going to write our logic programs in Clojure, we
+need a way to represent them.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defrecord LVar [id])
@@ -78,31 +44,62 @@ which is assigned when a new variable is allocated.
   (defn lvar? [x] (instance? LVar x))
 #+end_src
 
+An lvar's /id/ could be anything, but we use it like a serial
+number. The first lvar gets created with id 0, the next with id 1, and
+so on. There is some special syntax to help with that, which we'll see
+below.
+
 ** Substitutions and Walking
-A substitution map (/s-map/) is a hash-map that gives
-mappings from logic variables to their values.
+Once we have determined a value for an lvar, we put it into a
+substitution map (/s-map/ for short). This is a regular clojure
+hash-map with an lvar as a key. For example,
 
-To see what value an lvar is bound to in a given substitution map,
-use ~(walk u s)~. (/u/ is an lvar or a value) Supposing /a/ and /b/
-are lvars; in this simple case, ~(walk a {a 1})~ returns ~1~.
+#+begin_src clojure
+  { (lvar 0) "banana" }
+#+end_src
 
-Minikanren derivatives (including this one) use /triangular/
-substitutions, which means that an lvar may map to another lvar.
-Walk will follow these variable references until a value is
-reached. For example, ~(walk a {a b, b 2})~ returns ~2~.
+is a substitution map that makes the above example succeed (as long as
+/x/ is lvar 0).
 
-The observant reader may note that it is easy to construct a
-substitution map with a loop in it: ~(walk a {a b, b a})~ will not
-terminate. This case may be handled (but is not, in this
-implementation) with an ~occurs-check~ function call when adding
-new substitutions.
+There is one twist to the substitution map: lvars can be values, as
+well.  (This is called a /triangular/ substitution) Here is an example
+whose solution is a triangular substitution:
 
-We implement this in Clojure with the IWalk protocol, since it is
-polymorphic on the type of /u/.
+#+begin_quote
+  Either x is the beginning of the list [y, "orange", "apple"], or x
+  is the number 1.
 
-Note: when walking for an lvar, it may not be present in the
-substitution map.  In this case, the lvar itself is returned,
-indicating that the lvar is currently unbound.
+  y is the string "banana".
+#+end_quote
+
+One substitution map which will make this example succeed is
+#+begin_src clojure
+  { (lvar 0) (lvar 1)
+    (lvar 1) "banana" }
+#+end_src
+
+We define two operations on the substitution map. The first is for
+adding add new entries.
+#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
+  (defn add-substitution [s-map lvar value]
+    (when s-map
+      (assoc s-map lvar value)))
+#+end_src
+
+If you try to add something to a ~nil~ substitution map, we just
+return ~nil~. The ~nil~ substitution map is output when there are no
+substitutions that can make an expression succeed. We'll see where
+this is important when we start to build up substitution maps.
+
+The other operation on a substitution map is to look things up. It's just
+a hash-map, so why don't we just use the ~get~ function for this? Two reasons:
+
+ - If there is an lvar on the right-hand side, we need to look up that
+   value, following them until we get to a non-lvar.
+
+ - The ~walk~ function really means "give me the value of object,
+   given this substitution map". So if you walk with a value that's
+   not an lvar, it should just give you that value back.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (extend-protocol IWalk
@@ -117,31 +114,86 @@ indicating that the lvar is currently unbound.
     (walk [u s-map] nil))
 #+end_src
 
-#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
-  (defn add-substitution [s-map lvar value]
-    (when s-map
-      (assoc s-map lvar value)))
+Here are some example ~walk~ invocations:
+#+begin_src clojure
+  > (def s-map { (lvar 0) (lvar 1)
+                 (lvar 1) "banana" })
+
+  > (walk (lvar 0) s-map)
+  "banana"
+
+  > (walk (lvar 1) s-map)
+  "banana"
+
+  > (walk "mango" s-map)
+  "mango"
 #+end_src
 
+
+You might notice that it is easy to construct a substitution map with
+a loop in it: ~(walk a {a b, b a})~ will not terminate. Most implementations
+would handle that with a check in ~add-substitution~, but we omit it here
+for simplicity. (it's typically called ~occurs-check~)
+
 ** Unification
-Given two terms /u/ and /v/, and an existing substitution map /s/,
-unify produces a new substitution map with mappings that will make u
-and v equal.
+~unify~ is the way we build up substitution maps. Given two values /u/
+and /v/, and an existing substitution map /s-map/, ~unify~ produces a
+new substitution map with mappings that will make u and v equal.
 
-This unifier is extensible, in the spirit of core.logic. Only
-unification on basic types is directly implemented here. By extending
-the IUnifyTerms protocol, special unification logic may be supplied
-for any data type.
+This is a rather subtle; let's walk through some examples.
 
-A /term/ is, somewhat circularly, something you can pass to the
-unifier.  this includes lvars, regular values, and values of any type
-to which you have extended IUnifyTerms.
+- First, if either /u/ or /v/ is an lvar, the unifying them with a
+  value just like assigning a value.
 
+  #+begin_src clojure
+    > (unify (lvar 0) "banana" {})
+    {(lvar 0) "banana"}
+
+    > (unify "banana" (lvar 0) {})
+    {(lvar 0) "banana"}
+  #+end_src
+
+- But what if the lvar already has a value? Then there are two
+  possibilities. Either the two values agree:
+  #+begin_src clojure
+    > (unify (lvar 0) "banana"
+             {(lvar 0) "banana"})
+    {(lvar 0) "banana"}
+  #+end_src
+
+  Or they do not, leading to a contradiction:
+  #+begin_src clojure
+    > (unify (lvar 0) "banana"
+             {(lvar 0) "mango"})
+    nil
+  #+end_src
+
+- When there's something un-related in the substitution map,
+  we'll just add to it:
+  #+begin_src clojure
+    > (unify (lvar 0) "banana"
+             {(lvar 9) "squirrels"})
+    {(lvar 0) "banana"
+     (lvar 9) "squirrels"}
+  #+end_src
+
+That's it for the basic cases. They seem pretty trivial, but our unifier has
+one more nice feature: extensibility. By extending the IUnifyTerms protocol,
+you can add unification behavior for other data structures as well. We do
+this for sequences later on. But until then, here's a preview:
+
+#+begin_src clojure
+  > (unify [(lvar 0) 2 3] ["banana" 2 3] {})
+  {(lvar 0) "banana"}
+#+end_src
+
+Here's the implementation of ~unify~:
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn unify [u v s-map]
     (let [u (walk u s-map),    v (walk v s-map)
           u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
       (cond
+        ;; TODO is this case right???
         ;; Unifying two lvars adds no information to the substitution map
         (and u-is-lvar v-is-lvar (= u v)) s-map
 
@@ -150,7 +202,7 @@ to which you have extended IUnifyTerms.
         u-is-lvar (add-substitution s-map u v)
         v-is-lvar (add-substitution s-map v u)
 
-        ;; two not-lvar but equal structures unify
+        ;; two non-lvar values unify if they're equal
         (= u v) s-map
 
         ;; Unifying two non-lvars is delegated to the polymorphic
@@ -158,8 +210,9 @@ to which you have extended IUnifyTerms.
         :default (unify-terms u v s-map))))
 #+end_src
 
-If we get dispatched to either of these definitions, we know that neither
-u or v is an lvar, that they aren't equal, and we aren't doing some kind
+Here are the basic IUnifyTerms definitions for Object and nil.  If we
+get dispatched to either of these definitions, we know that neither u
+or v is an lvar, that they aren't equal, and we aren't doing some kind
 of structural comparison defined elsewhere. They must not unify.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
@@ -169,26 +222,48 @@ of structural comparison defined elsewhere. They must not unify.
 #+end_src
 
 ** Lazy Streams
-The lazy stream mechanism is one of the really interesting parts about
-miniKanren. It's different from regular scheme linked lists or even
-clojure's lazy sequences - it lets you schedule work fairly between
-different branches of the search space, each of which is represented
-by a stream.
+As we've alluded to above, when you run a logic program you can get more than
+one result. MiniKanren's approach to this is really unique, and is one
+of the most interesting parts of the program.
 
-Unlike a clojure seq, a stream may be in one of three states:
+First, let's make a case for why we need a lazy stream
+mechanism. Consider the program:
+#+begin_quote
+  Define Natural(x) to be true when either:
+    - x is the number 0
+    - x is greater than 0, and Natural(x - 1) is true
+#+end_quote
 
-- mature (head realized)
-- immature (head unrealized)
-- empty
+Clearly there are an infinite number of substitution maps that make
+this program succeed - ~{(lvar 0) 0}~, ~{(lvar 0) 1}~, ~{(lvar 0) 2}~,
+and so on.
 
-The immature state indicates that there is some work to be done to
-either compute the head of the stream or to determine if it's empty.
-Contrast this with clojure lazy sequences, where the act of getting
-the rest of a sequence is what triggers computation. This difference
-is subtle but important, and it allows the interleaved scheduling to
-work.
+*** The definition of a logic program
+1. In miniKanren, /the output of a logic program is a set of
+   substitutions/ that make that program succeed.
 
-*** Things you can do with a stream
+2. A logic program is built by combining smaller logic programs using
+   the conjunction (and) and disjunction (or) operators.
+
+But we just saw that some logic programs may have an infinitely large
+set of solutions. Clearly, we'll need to impose some order oin
+them. And if you're combining two programs, each with infinite output,
+there must be some way of going back and forth between the output of
+each. This is the motivation for lazy streams.
+
+*** Definition of a lazy stream
+There are three kinds of lazy streams:
+- Empty
+- Mature (head realized)
+- Immature (head unrealized)
+
+A mature stream is one in which the first element of the stream has a
+definite value that has already been computed. An immature stream, on
+the other hand, does not yet have a computed head. Instead if has a
+function which it can used to compute a mature (or empty) stream when
+you need it.
+
+You can manipulate a stream with these functions:
 - Merge two of them together with ~merge-streams~
 - Map a function over it with ~mapcat-stream~, as long as that
   function itself produces streams.
@@ -206,46 +281,44 @@ work.
       (stream-to-seq [stream] '())))
 #+end_src
 
-
 *** Mature streams (StreamNode)
-
-A head-realized streams is represented by an instance of StreamNode.
-This is kind of like a linked list: /head/ is the realized value that
-can be taken from the stream, and /next/ is the stream which follows.
-But these streams are polymorphic; /next/ isn't necessarily a
-StreamNode, just some other thing which extends the IStream protocol.
+A mature streams is represented by an instance of StreamNode.  This is
+kind of like a linked list: /head/ is the realized value that can be
+taken from the stream, and /next/ is the stream which follows.  But
+these streams are polymorphic; /next/ isn't necessarily a StreamNode,
+just some other thing which extends the IStream protocol.
 
 Note that, if we have only StreamNodes (i.e. fully realized streams),
 ~merge-streams~ is equivalent to ~concat~ and ~mapcat-stream~ to
 ~mapcat~.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
-  (deftype StreamNode [head next]
-    IStream
-    (merge-streams [stream-1 stream-2] (StreamNode. head
-                                        (merge-streams next stream-2)))
-    (mapcat-stream [stream g] (merge-streams (g head)
-                                        (mapcat-stream next g)))
-    (realize-stream-head [stream] stream)
+    (deftype StreamNode [head next]
+      IStream
+      (merge-streams [stream-1 stream-2] (StreamNode. head
+                                                      (merge-streams next stream-2)))
+      (mapcat-stream [stream g] (merge-streams (g head)
+                                               (mapcat-stream next g)))
+      (realize-stream-head [stream] stream)
 
-    (stream-to-seq [stream] (lazy-seq (cons head (stream-to-seq next)))))
+      (stream-to-seq [stream] (lazy-seq (cons head (stream-to-seq next)))))
 
-(defn make-stream [s] (StreamNode. s empty-stream))
+  (defn make-stream [s] (StreamNode. s empty-stream))
 #+end_src
 
 *** Immature streams (IFn)
+An immature stream is represented by a thunk (a function of no
+arguments).
 
-An immature (head-unrealized) stream is represented by a thunk (a
-function of no arguments).
-
-Executing the thunk does one unit of work and yields back a stream. This may
-in turn be a function, so you might have to keep calling the returned function
-many times until you get down to a realized value. This is exactly what
-~realize-stream-head~ does here, by way of ~trampoline~.
+Executing the thunk does one unit of work and returns a new
+stream. This may in turn be a function, so you might have to keep
+calling the returned function many times until you get down to a
+realized value. This is exactly what ~realize-stream-head~ does here,
+by way of ~trampoline~.
 
 **** Merging
-Merging is the tricky part - this is what makes the search
-interleaving. Let's examine the definition:
+Merging is tricky - this is what makes the search interleaving. Let's
+examine the definition:
 #+begin_src clojure
    clojure.lang.IFn
    (merge-streams [stream-1 stream-2]
@@ -313,9 +386,25 @@ Here is the whole definition of IStream for functions:
       (stream-to-seq (realize-stream-head stream))))
 #+end_src
 
+*** Differences from Clojure's Seq
+This is very similar to Clojure's Seq abstraction; why not just use
+that? Well, there are cases where you are combining the results of two
+logic programs (with merge-streams), but one of them might
+diverge. This is actually fairly easy to cause in miniKanren, if
+you're not careful about the way you do recursive calls. The lazy
+stream system shown here handles that case by giving each stream equal
+processing time, evaluating its thunks as they come. In this sense,
+lazy streams are a scheduling system for processes which may return
+multiple outputs.
+
 ** Goals
-A /state/ is a record containing a substitution map *s* and the id
-of the next unbound /next-id/.
+Until now, we have talked about a logic program returning a set of
+substitutions. This was a small lie, which we now refine into the
+actual implementation.
+
+*** States
+A /state/ is a record containing a substitution map *s-map* and the id
+of the next unused logic variable, /next-id/.
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defrecord State [s-map next-id])
 
@@ -325,23 +414,23 @@ of the next unbound /next-id/.
   (defn with-next-id [state next-id] (assoc state :next-id next-id))
 #+end_src
 
-
+*** Goal functions
 A goal is a function which, given a state, returns a stream of
-states. Conceptually, it encodes some constraints. Give it an input
-state, and it will give you one output state for each way it can
-meet those constraints.
+states. It encapsulates a logic program. Give it an input state, and
+it will give you one output state for each way it can make that
+program succeed, given the information in the input state.
 
+*** Basic goal constructors
 Rather than dealing with goals directly, we usually use
 /goal constructors/; given some parameter (usually a unification term or
 another goal), they will return a goal function which closes over
 it.
 
-*** Basic goal constructors
-
-Given two terms u and v, create a goal that will unify them. The
-goal takes an existing state and returns either a state with
-bindings for the lvars in u and v (using ~unify~), or returns the empty
-stream if no such state exists.
+The most fundamental goal constructor is for unification.  Given two
+terms u and v, this creates a goal that will unify them. The goal
+takes an existing state and returns either a state with bindings for
+the lvars in u and v (using ~unify~), or returns the empty stream if
+no such state exists.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn === [u v]
@@ -351,9 +440,10 @@ stream if no such state exists.
         empty-stream)))
 #+end_src
 
-Wrap /goal-constructor/, a function of a single lvar, in a
-goal that allocates a new lvar from its state parameter and passes
-it to /goal-constructor/.
+/call-fresh/ will wrap /goal-constructor/, a function of a single
+lvar, in a goal that allocates a new lvar from its state parameter and
+passes it to /goal-constructor/. For a more practical way of using
+this, see the /fresh/ macro below.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn call-fresh [goal-constructor]
@@ -362,9 +452,10 @@ it to /goal-constructor/.
        (goal (with-next-id state (inc next-id))))))
 #+end_src
 
-Logical disjuction ('or'). Construct a new goal that succeeds
-whenever /goal-1/ or /goal-2/ succeed. ~merge-streams~ is used on each
-goal's output to ensure fair scheduling between the two.
+Logical disjuction ('or') is done with ldisj, which constructs a new
+goal that succeeds whenever /goal-1/ or /goal-2/ succeeds.
+~merge-streams~ is used on each goal's output to ensure fair
+scheduling between the two.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn ldisj [goal-1 goal-2]
@@ -372,8 +463,8 @@ goal's output to ensure fair scheduling between the two.
       (merge-streams (goal-1 state) (goal-2 state))))
 #+end_src
 
-Logical conjunction ('and'). Construct a new goal that succeeds when
-both /goal-1/ and /goal-2/ succeed.
+Logical conjunction ('and') is done with lconj. It constructs a new
+goal that succeeds when both /goal-1/ and /goal-2/ succeed.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
 (defn lconj [goal-1 goal-2]
@@ -387,13 +478,13 @@ At this point, we have defined everything we need to do logic
 programming.  But it's very inconvenient; some utility macros make the
 task more bearable.
 
-Wrap the given goal in a new one which, when executed, simply
-returns a thunk. Recall that goal functions return streams, and that
-a function is a valid kind of stream (an immature stream). The goal
-will finally be executed when the thunk is evaluated by
-realize-stream-head.
+/delay-goal/ will wrap the given goal in a new one which, when
+executed, simply returns a thunk. Recall that goal functions return
+streams, and that a function is a valid kind of stream (an immature
+stream). The goal will finally be executed when the thunk is evaluated
+by realize-stream-head.
 
-This is useful for defining recursive goals.
+This is especially useful when defining recursive goals.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro delay-goal [goal]
@@ -401,12 +492,13 @@ This is useful for defining recursive goals.
        (fn delayed-goal-inner [] (~goal state#))))
 #+end_src
 
+We also define extended versions of the ~ldisj~ and ~lconj~
+functions. These handle multiple arguments, instead of just two. They
+also automatically wraps each goal with ~delay-goal~, so you don't
+need to worry about adding delays yourself.
 
-Extended version of the ~ldisj~ function. This one handles multiple
-arguments, instead of just two. It also automatically wraps each goal
-with ~delay-goal~, so you don't need to worry about adding them yourself.
-
-(This does have a performance cost, but speed is not the point of this port)
+(This does have a performance cost, but speed is not the point of this
+implementation)
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro ldisj+
@@ -414,7 +506,6 @@ with ~delay-goal~, so you don't need to worry about adding them yourself.
     ([goal & goals] `(ldisj (delay-goal ~goal) (ldisj+ ~@goals))))
 #+end_src
 
-Like ~ldisj+~, but for ~lconj~.
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro lconj+
     ([goal] `(delay-goal ~goal))
@@ -422,16 +513,22 @@ Like ~ldisj+~, but for ~lconj~.
 #+end_src
 
 ** Reificiation
-
 In miniKanren, reification refers to extracting the desired values
 from the stream of states you get as a result of executing a goal.
+
+When there are logic variables in the output which were not assigned
+a value, they are named "_.0", "_.1", and so on.
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn reify-name [n]
     (symbol (str "_." n)))
+#+end_src
 
+/reify-s-map/ creates a substitution map with reified values in it. It bases
+This on the supplied /s-map/ parameter, but adds entries for each unknown
+that appears in the /v/ parameter, using values from /reify-name/.
+#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn reify-s [v s-map]
     (reify-s* (walk v s-map) s-map))
-
 
   (extend-protocol IReifySubstitution
     LVar
@@ -445,27 +542,33 @@ from the stream of states you get as a result of executing a goal.
     (reify-s* [v s-map] s-map))
 #+end_src
 
-
-Like walk. But instead of simply returning any non-lvar value, will
-attempt to assign values to any lvars embedded in the value.  For
-example, ~(walk* a {a (1 2 c), c 3)}~ will give ~(1 2 3)~.  (once we
-have the sequence extensions from sequence.clj)
+/deep-walk/ is like walk, but instead of simply returning any
+non-lvar value, it will attempt to assign values to any lvars
+embedded in it.  For example, ~(deep-walk a {a (1 2 c), c 3)}~ will
+give ~(1 2 3)~.  (once we have the sequence extensions, which are
+defined below)
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
-  (defn walk* [v s-map]
-    (deep-walk (walk v s-map) s-map))
+  (defn deep-walk [v s-map]
+    (deep-walk* (walk v s-map) s-map))
 
   (extend-protocol IDeepWalk
-    LVar   (deep-walk [v s-map] v)
-    Object (deep-walk [v s-map] v)
-    nil    (deep-walk [v s-map] v))
+    LVar   (deep-walk* [v s-map] v)
+    Object (deep-walk* [v s-map] v)
+    nil    (deep-walk* [v s-map] v))
+#+end_src
 
+Finally, we can define the actual reifier. Given a state, this will
+give you the reified value of the first lvar that was defined. If
+you're using the /run/ macro defined below, this will be your query
+variable.
+#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn reify-state-first-var [{:keys [s-map]}]
-    (let [v (walk* (lvar 0) s-map)]
-      (walk* v (reify-s v {}))))
+    (let [v (deep-walk (lvar 0) s-map)]
+      (deep-walk v (reify-s v {}))))
 #+end_src
 
 ** Programmer interface
-The regular miniKanren ~conde~ form, a disjunction of
+Define the regular miniKanren ~conde~ form, a disjunction of
 conjunctions (an 'or' of 'ands'). Supposing that /a/ and /b/ are
 lvars,
 
@@ -485,9 +588,9 @@ will produce two results: ~{a 1, b 2}~ and ~{a 7, b 12}~.
                     clauses)))
 #+end_src
 
-Provide a more convenient syntax for ~call-fresh~. ~fresh~ lets you
-declare multiple logic variables at once, and it takes care of the
-function declaration mechanics for you.
+The ~fresh~ macro provides a more convenient syntax for
+~call-fresh~. ~fresh~ lets you declare multiple logic variables at
+once, and it takes care of the function declaration mechanics for you.
 
 The body of fresh is passed to ~lconj+~, a logical 'and'.
 #+begin_src clojure
@@ -507,16 +610,34 @@ Will give one result, ~{x 1, y 2}~.
                        ~@clauses)))))
 #+end_src
 
+A utility to invoke a goal with an empty state, as you might do
+when running a logic program from scratch:
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn call-empty-state [goal]
     (goal empty-state))
+#+end_src
 
+Finally, the run* macro gives us a lazy sequence of readable (reified) values.
+#+begin_src clojure
+  > (run* [q]
+      (conde
+        [(=== q 1)]
+        [(=== q 7)]))
+  (1 7)
+#+end_src
+
+#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro run* [fresh-var-vec & goals]
     `(->> (fresh [~@fresh-var-vec] ~@goals)
        call-empty-state
        stream-to-seq
        (map reify-state-first-var)))
+#+end_src
 
+If you only want a few values (for example, if you know there are an
+infinite number of results), (run n [q] <<goals>>) can do that. It's
+equivalent to running ~take~ on the output of run*.
+#+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro run [n fresh-var-vec & goals]
     `(take ~n (run* ~fresh-var-vec ~@goals)))
 #+end_src
@@ -553,7 +674,6 @@ improper lists: ~(1 2 . 3)~. This will typically be transparent to the
 user on the programming side, since such lists will be automatically
 constructed by the 'conso' goal below.
 
-
 #+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
   (deftype Dot [])
   (def dot (Dot.))
@@ -561,10 +681,25 @@ constructed by the 'conso' goal below.
 
 There are times when the user may see an improper list as the result
 of a query. In this case, print the sigil as "."
+
 #+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
   (defmethod print-method Dot [l ^java.io.Writer w]
     (.write w "."))
 #+end_src
+
+The first extension point is the unifier; we need to define what it means
+to unify a sequence with something else.
+
+The basic case is simple: if unifying a sequence with another sequence,
+then we should unify each element together. Recursively, this means unifying
+their first elements and then the rest of the sequence.
+
+The unifier also needs to be aware of the dot-notation described
+above. If either /u/ or /v/ is a sequence beginning with a dot, the
+its second item must be an lvar which should be unified with the other
+variable. For example, if we start with ~(=== [1 2 3] [1 . a])~, it
+will recurse down to ~(=== [2 3] [. a])~. Detecting that, we can call
+~(=== [2 3] a)~, which gives the desired result.
 
 #+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
   (extend-protocol IUnifyTerms
@@ -576,71 +711,149 @@ of a query. In this case, print the sigil as "."
         (seq v) (->> s
                   (unify (first u) (first v))
                   (unify (rest u) (rest v))))))
+#+end_src
 
-  ;; Extending IReifySubstitution and
+Next, we need to extend the reifier. When calling reify-s, we need to
+look for occurences of logic variables inside of given paramter. This
+extends reify-s to make a recursive call on the first element of the
+sequence, then on the remaining elements.
+
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
   (extend-protocol IReifySubstitution
     clojure.lang.Sequential
     (reify-s* [v s-map]
       (if (seq v)
         (reify-s (rest v) (reify-s (first v) s-map))
         s-map)))
+#+end_src
 
+Deep-walk needs to be extended as well. As above, we we handle
+sequences beginning with 'dot' as a special case, go recursing back
+with the second item of the sequence.  For any other sequences, we
+effectively map the deep-walk function over the sequence.
 
-  ;; Extending IDeepWalk allows
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
   (extend-protocol IDeepWalk
     clojure.lang.Sequential
-    (deep-walk [v s-map]
+    (deep-walk* [v s-map]
       (cond
         (and (= dot (first v))
              (sequential? (second v)))
-        (walk* (second v) s-map)
+        (deep-walk (second v) s-map)
 
         (seq v)
-        (cons (walk* (first v) s-map)
-              (walk* (rest v)  s-map))
+        (cons (deep-walk (first v) s-map)
+              (deep-walk (rest v)  s-map))
 
         :default v)))
 #+end_src
 
 ** Sequence relations
+Now we can define some user-level relations for sequences. First,
+conso says that /out/ is the sequence with the head /first/ and the
+tail /rest/.
+
 #+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
-  (defn conso
-    "Relation: *out* is an LList built out of *first* and *rest*"
-    [first rest out]
+  (defn conso [first rest out]
     (if (lvar? rest)
       (=== [first dot rest] out)
       (=== (cons first rest) out)))
+#+end_src
 
-  (defn firsto
-    "Relation: *out* is an LList whose first element is *first*"
-    [first out]
+/firsto/ simply says that /first/ is the head of /out/.
+
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
+  (defn firsto [first out]
     (fresh [rest]
       (conso first rest out)))
+#+end_src
 
-  (defn resto
-    "Relation: *out* is an LList whose cdr is *rest*"
-    [rest out]
+And /resto/, likewise, says that /rest/ is the tail of /out/.
+
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
+  (defn resto [rest out]
     (fresh [first]
       (conso first rest out)))
-
-  (defn emptyo
-    "Relation: *x* is the empty LList"
-    [x]
-    (=== '() x))
-
-  (defn repeato [n out]
-    (conde
-      [(emptyo out)]
-      [(fresh [rest]
-         (conso n rest out)
-         (repeato n rest))]))
-
-  (defn iterateo [gc x]
-    (conde
-      [(emptyo x)]
-      [(fresh [val rest]
-         (gc val)
-         (conso val rest x)
-         (iterateo gc rest))]))
-
 #+end_src
+
+/emptyo/ is a way to say that /s/ must be an empty sequence.
+
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
+  (defn emptyo [s]
+    (=== '() s))
+#+end_src
+
+/appendo/ says that /out/ is the result of appending the sequence parameters
+/seq1/ and /seq1/.
+#+begin_src clojure :tangle "src/micro_logic/sequence.clj" :comments org
+  (defn appendo [seq1 seq2 out]
+    (conde
+      [(emptyo seq1) (=== seq2 out)]
+      [(fresh [first rest rec]
+         (conso first rest seq1)
+         (conso first rec out)
+         (appendo rest seq2 rec))]))
+#+end_src
+
+You can do some interesting things with /appendo/. For example, this program
+will find all the ways you can append two lists to create ~[1 2 3 4 5]~:
+
+#+begin_src clojure
+  > (run* [q]
+      (fresh [x y]
+        (appendo x y [1 2 3 4 5])
+        (=== q [x y])))
+
+  ((() (1 2 3 4 5))
+   ((1)  (2 3 4 5))
+   ((1 2)  (3 4 5))
+   ((1 2 3)  (4 5))
+   ((1 2 3 4)  (5))
+   ((1 2 3 4 5) ()))
+#+end_src
+
+* Back matter
+** Bibliography
+- The microKanren paper: http://webyrd.net/scheme-2013/papers/HemannMuKanren2013.pdf
+- The microKanren scheme implementation: https://github.com/jasonhemann/microKanren
+- core.logic, Clojure's real miniKanren implementation: https://github.com/clojure/core.logic
+- Will Byrd's dissertation on miniKanren: https://github.com/webyrd/dissertation-single-spaced/raw/master/thesis.pdf
+- Chris Grand on the lazy stream monad, and mplus in particular: http://clj-me.cgrand.net/2012/01/30/the-reasoned-scheduler/
+- The Reasoned Schemer: http://mitpress.mit.edu/books/reasoned-schemer
+
+** Differences from microKanren
+Polymorphic dispatch via protocols is used in place of `(cond)` with
+type checks, where possible.
+
+Clojure-native datatypes are used where appropriate
+- The substitution map is a clojure map instead of an alist
+- There is an LVar defrecrord, instead of using a vector of c
+- We have an explicit StreamNode data type, rather building on the
+  built-in list type
+- Clojure doesn't allow improper lists; we emulate it with the 'dot'
+  sigil.
+
+Many names have changed to be more clojure-like:
+
+|uKanren | microLogic          |
+|--------|---------------------|
+|mplus   | merge-streams       |
+|bind    | mapcat-stream       |
+|pull    | realize-stream-head |
+|mzero   | empty-stream        |
+|unit    | stream              |
+|Zzz     | delay-goal          |
+|conj    | lconj               |
+|disj    | ldisj               |
+|==      | =====               |
+
+** Differences from core.logic
+
+|core.logic | microLogic           |
+|-----------|----------------------|
+|mplus      | merge-streams        |
+|bind       | mapcat-stream        |
+|pull       | realize-stream-head  |
+|mzero      | empty-stream         |
+|unit       | stream               |
+|==         | =====                |
