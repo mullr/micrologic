@@ -3,8 +3,10 @@
 
 * Introduction
 This is a literate Clojure implementation of miniKanren, a logic
-programming system.  It's meant to be an introduction to the inner
-workings of miniKanren and and of core.logic.
+programming system which can be embedded in functional programming
+languages.  It's meant to be an introduction to the inner workings of
+miniKanren and and of core.logic, helping you to understand more
+completely what's happening when you use those systems.
 
 For maximum enjoyment, the reader should be familiar with Clojure, and
 in particular with protocols. In lieu of that, basic understanding of
@@ -12,7 +14,7 @@ lisp syntax and a read through something like
 http://clojure-doc.org/articles/language/polymorphism.html should be
 sufficient.
 
-This code was derived substantially from microKanren; for more
+This code was derived substantially from microKanren; for much more
 information, see the bibliography at the end.
 
 * Functional Core
@@ -818,8 +820,8 @@ effectively map the deep-walk function over the sequence.
         :default v)))
 #+end_src
 
-** Sequence relations
-Now we can define some user-level relations for sequences. First,
+** Sequence goals
+Now we can define some user-level goals for sequences. First,
 conso says that /out/ is the sequence with the head /first/ and the
 tail /rest/.
 
@@ -892,21 +894,24 @@ will find all the ways you can append two lists to create ~[1 2 3 4 5]~:
 - The Reasoned Schemer: http://mitpress.mit.edu/books/reasoned-schemer
 
 ** Differences from microKanren
-Polymorphic dispatch via protocols is used in place of `(cond)` with
+Polymorphic dispatch via protocols is used in place of ~cond~ with
 type checks, where possible.
 
 Clojure-native datatypes are used where appropriate
 - The substitution map is a clojure map instead of an alist
-- There is an LVar defrecrord, instead of using a vector of c
+- There is an LVar defrecord, instead of using a vector of the lvar id.
 - We have an explicit StreamNode data type, rather building on the
-  built-in list type
+  built-in list type.
 - Clojure doesn't allow improper lists; we emulate it with the 'dot'
   sigil.
 
-Many names have changed to be more clojure-like:
+Many names have changed to be compatible with clojure, and to be more
+approachable to those without knowledge of Scheme, monads or
+miniKanren.
 
 |uKanren | microLogic          |
 |--------|---------------------|
+|c       | id                  |
 |mplus   | merge-streams       |
 |bind    | mapcat-stream       |
 |pull    | realize-stream-head |
@@ -919,11 +924,11 @@ Many names have changed to be more clojure-like:
 
 ** Differences from core.logic
 
-|core.logic | microLogic           |
-|-----------|----------------------|
-|mplus      | merge-streams        |
-|bind       | mapcat-stream        |
-|pull       | realize-stream-head  |
-|mzero      | empty-stream         |
-|unit       | stream               |
-|==         | =====                |
+| core.logic | microLogic          |
+|------------+---------------------|
+| mplus      | merge-streams       |
+| bind       | mapcat-stream       |
+| pull       | realize-stream-head |
+| mzero      | empty-stream        |
+| unit       | stream              |
+| ==         | =====               |
