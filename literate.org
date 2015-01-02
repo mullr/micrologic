@@ -201,6 +201,25 @@ Let's walk through some examples.
      (lvar 9) "squirrels"}
   #+end_src
 
+- Finally, if we unify two variables that can't be resolved to a value
+  in the substitution map (these variables are called /fresh/) we add
+  a new entry.
+  #+begin_src clojure
+    > (def new-s (unify (lvar 1) (lvar 2)
+                        {(lvar 0) (lvar 1)}))
+    {(lvar 0) (lvar 1)
+     (lvar 1) (lvar 2)}
+
+    > (walk (lvar 0) new-s)
+    (lvar 2)
+
+    > (walk (lvar 1) new-s)
+    (lvar 2)
+  #+end_src
+
+  You can see from the example that unification is transitive; if a unifies with b,
+  and b unifies with c, then a unifies with c.
+
 That's it for the basic cases. They seem pretty trivial, but our unifier has
 one more nice feature: extensibility. By extending the IUnifyTerms protocol,
 you can add specialized unification behavior for any other data type as well.
@@ -233,9 +252,9 @@ Here's the implementation of ~unify~:
 
 Here are the basic IUnifyTerms definitions for Object and nil.  If we
 get dispatched to either of these definitions, we know that neither u
-or v is an lvar, that the values aren't equal, and we aren't doing
-some kind of extended unification that's defined elsewhere. Thus, they
-must not unify.
+or v walks to an lvar, that the values aren't equal, and we aren't
+doing some kind of extended unification that's defined
+elsewhere. Thus, they must not unify.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
 (extend-protocol IUnifyTerms
