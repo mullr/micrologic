@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
 <title>microLogic</title>
-<!-- 2014-12-31 Wed 00:51 -->
+<!-- 2015-01-02 Fri 11:31 -->
 <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta  name="generator" content="Org-mode" />
 <meta  name="author" content="Russell Mull" />
@@ -175,7 +175,7 @@ for the JavaScript code in this tag.
 </li>
 <li><a href="#sec-3">3. Sugar</a>
 <ul>
-<li><a href="#sec-3-1">3.1. Auxilliary macros</a></li>
+<li><a href="#sec-3-1">3.1. Auxiliary macros</a></li>
 <li><a href="#sec-3-2">3.2. Reificiation</a></li>
 <li><a href="#sec-3-3">3.3. Programmer interface</a></li>
 </ul>
@@ -232,7 +232,7 @@ information, see the bibliography at the end.
 <p>
 The purpose of a logic program is to takes an expression with some
 unknowns in it and try to find values for those unknowns that make the
-espression true. Here's an example logic program in English with an
+expression true. Here's an example logic program in English with an
 unknown <i>x</i>:
 </p>
 
@@ -274,7 +274,7 @@ later on.
 <p>
 In the course of running a logic program, we'll be deciding on values
 for logic variables and testing those values against other parts of
-the program to see if it meets all the neccessary criteria. The values
+the program to see if it meets all the necessary criteria. The values
 are stored in a data structure called a substitution map (<i>s-map</i> for
 short).
 </p>
@@ -423,7 +423,7 @@ new substitution map with mappings that will make u and v equal.
 </p>
 
 <p>
-A term is simply somthing you can pass to unify. This is indeed a
+A term is simply something you can pass to unify. This is indeed a
 circular definition. But really, you can pass anything you like as a
 term. It's just that some types of terms have specialized behavior.
 LVars do, for example. When we add support for sequences, they will as
@@ -473,7 +473,7 @@ Or they do not, leading to a contradiction:
 </div>
 </li>
 
-<li>When there's something un-related in the substitution map,
+<li>When there's something unrelated in the substitution map,
 we'll just add to it:
 <div class="org-src-container">
 
@@ -483,6 +483,30 @@ we'll just add to it:
  (lvar 9) <span style="color: #8b2252;">"squirrels"</span>}
 </pre>
 </div>
+</li>
+
+<li>Finally, if we unify two variables that can't be resolved to a value
+in the substitution map (these variables are called <i>fresh</i>) we add
+a new entry.
+<div class="org-src-container">
+
+<pre class="src src-clojure">&gt; (<span style="color: #a020f0;">def</span> <span style="color: #a0522d;">new-s</span> (unify (lvar 1) (lvar 2)
+                    {(lvar 0) (lvar 1)}))
+{(lvar 0) (lvar 1)
+ (lvar 1) (lvar 2)}
+
+&gt; (walk (lvar 0) new-s)
+(lvar 2)
+
+&gt; (walk (lvar 1) new-s)
+(lvar 2)
+</pre>
+</div>
+
+<p>
+You can see from the example that unification is transitive; if a unifies with b,
+and b unifies with c, then a unifies with c.
+</p>
 </li>
 </ul>
 
@@ -509,19 +533,17 @@ Here's the implementation of <code>unify</code>:
   (<span style="color: #a020f0;">let</span> [u (walk u s-map),    v (walk v s-map)
         u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
     (<span style="color: #a020f0;">cond</span>
-      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Unifying two lvars adds no information to the substitution map</span>
-      (<span style="color: #a020f0;">and</span> u-is-lvar v-is-lvar (= u v)) s-map
+      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Terms that walk to equal values always unify, but add nothing</span>
+      <span style="color: #b22222;">;; </span><span style="color: #b22222;">to the substitution map</span>
+      (= u v) s-map
 
-      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Unifying an lvar with some other value creates a new entry in</span>
+      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Unifying an lvar term with some other value creates a new entry in</span>
       <span style="color: #b22222;">;; </span><span style="color: #b22222;">the substitution map</span>
       u-is-lvar (add-substitution s-map u v)
       v-is-lvar (add-substitution s-map v u)
 
-      <span style="color: #b22222;">;; </span><span style="color: #b22222;">two non-lvar values always unify if they're equal</span>
-      (= u v) s-map
-
-      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Unifying two non-lvars is delegated to the polymorphic</span>
-      <span style="color: #b22222;">;; </span><span style="color: #b22222;">unify-terms function, from IUnifyTerms.</span>
+      <span style="color: #b22222;">;; </span><span style="color: #b22222;">Unifying two terms that walk to non-lvar values is delegated</span>
+      <span style="color: #b22222;">;; </span><span style="color: #b22222;">to the polymorphic unify-terms function, from IUnifyTerms.</span>
       <span style="color: #008b8b;">:default</span> (unify-terms u v s-map))))
 </pre>
 </div>
@@ -529,9 +551,9 @@ Here's the implementation of <code>unify</code>:
 <p>
 Here are the basic IUnifyTerms definitions for Object and nil.  If we
 get dispatched to either of these definitions, we know that neither u
-or v is an lvar, that the values aren't equal, and we aren't doing
-some kind of extended unification that's defined elsewhere. Thus, they
-must not unify.
+or v walks to an lvar, that the values aren't equal, and we aren't
+doing some kind of extended unification that's defined
+elsewhere. Thus, they must not unify.
 </p>
 
 <div class="org-src-container">
@@ -589,7 +611,7 @@ Define Natural(x) to be true when either:
 <p>
 Clearly there are an infinite number of substitution maps that make
 this program true - <code>{(lvar 0) 0}</code>, <code>{(lvar 0) 1}</code>, <code>{(lvar 0) 2}</code>,
-and so on. That is, it has an inifinitely large set of solutions.
+and so on. That is, it has an infinitely large set of solutions.
 </p>
 
 <p>
@@ -604,7 +626,7 @@ As you can probably guess from the name, this is a program which has
 no valid output. But it's a program you can write all the same, and it
 will take forever to produce no output. The example is contrived, but
 you can get into such a situation surprisingly (distressingly) easily
-when writing actual progrems.
+when writing actual programs.
 </p>
 
 <p>
@@ -649,8 +671,8 @@ There are three kinds of lazy streams:
 <p>
 A mature stream is one in which the first element of the stream has a
 definite value that has already been computed. An immature stream, on
-the other hand, does not yet have a computed head. Instead if has a
-function which it can used to compute a mature (or empty) stream when
+the other hand, does not yet have a computed head. Instead it has a
+function which you can use to compute a mature (or empty) stream when
 you need it.
 </p>
 
@@ -812,8 +834,8 @@ An imaginary repl session may make this clearer:
 <p>
 The basic concept here is pretty straightforward: make a new thunk
 which, when executed later, will do some work and then mapcat <code>g</code> over
-the result.  The thunk is used instead of just exeuting the function
-directly because <code>mapcat-stream</code> may be used inside a recusive
+the result.  The thunk is used instead of just executing the function
+directly because <code>mapcat-stream</code> may be used inside a recursive
 function, which might diverge. This won't keep the function from
 diverging, but it will allow its execution to be interleaved with the
 rest of the program.
@@ -954,7 +976,7 @@ convenient way to do this, see the <i>fresh</i> macro below.
 
 <p>
 One way to combine smaller goals into a new one is with logical
-disjuction, the 'or' operation. <code>ldisj</code> which constructs a new goal
+disjunction, the 'or' operation. <code>ldisj</code> which constructs a new goal
 that succeeds whenever <i>goal-1</i> or <i>goal-2</i> succeeds.  Another way to
 look at this is that it interleaves the results of <i>goal-1</i> and
 <i>goal-2</i>, using <code>merge-streams</code>.
@@ -999,7 +1021,7 @@ task more bearable.
 </div>
 
 <div id="outline-container-sec-3-1" class="outline-3">
-<h3 id="sec-3-1"><span class="section-number-3">3.1</span> Auxilliary macros</h3>
+<h3 id="sec-3-1"><span class="section-number-3">3.1</span> Auxiliary macros</h3>
 <div class="outline-text-3" id="text-3-1">
 <p>
 <i>delay-goal</i> will wrap the given goal in a new one which, when
@@ -1166,7 +1188,7 @@ of ands' and to get used to the name)
 
 <p>
 The <code>fresh</code> macro allocates some new logic variables and makes them
-available in its boday. Really, it's a more convenient syntax for
+available in its body. Really, it's a more convenient syntax for
 <code>call-fresh</code>. <code>fresh</code> lets you declare multiple logic variables at
 once, and it takes care of the function declaration mechanics for you.
 </p>
@@ -1227,8 +1249,8 @@ Finally, the run* macro gives us a lazy sequence of readable (reified) values.
 </div>
 
 <p>
-The first parameter is a vector of logic varialbes which will be
-alocated and made available in the body; the first of these is reified
+The first parameter is a vector of logic variables which will be
+allocated and made available in the body; the first of these is reified
 and returned as a lazy sequence. This is called the 'query variable',
 and is often named 'q' by convention.
 </p>
@@ -1289,7 +1311,7 @@ which does allow improper lists. We take a different approach here.
 </p>
 
 <p>
-Whenver you want an improper list in the context of a logic program,
+Whenever you want an improper list in the context of a logic program,
 you can signify it with the 'dot' sigil. For example: <code>[1 2 dot a]</code>.
 This is meant to evoke the Scheme and Common LISP notation for
 improper lists: <code>(1 2 . 3)</code>. This will typically be transparent to the
@@ -1352,7 +1374,7 @@ will recurse down to <code>(=== [2 3] [. a])</code>. Detecting that, we can call
 
 <p>
 Next, we need to extend the reifier. When calling reify-s, we need to
-look for occurences of logic variables inside of given paramter. This
+look for occurrences of logic variables inside of given parameter. This
 extends reify-s to make a recursive call on the first element of the
 sequence, then on the remaining elements.
 </p>
@@ -1520,7 +1542,7 @@ type checks, where possible.
 </p>
 
 <p>
-Clojure-native datatypes are used where appropriate
+Clojure-native data types are used where appropriate
 </p>
 <ul class="org-ul">
 <li>The substitution map is a clojure map instead of an alist
@@ -1665,7 +1687,7 @@ miniKanren.
 </div>
 <div id="postamble" class="status">
 <p class="author">Author: Russell Mull</p>
-<p class="date">Created: 2014-12-31 Wed 00:51</p>
+<p class="date">Created: 2015-01-02 Fri 11:31</p>
 <p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.4.1 (<a href="http://orgmode.org">Org</a> mode 8.2.10)</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>
