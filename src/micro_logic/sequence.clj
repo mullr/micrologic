@@ -17,7 +17,7 @@
 ;; it. core.logic solves this problem by defining its own LCons data type
 ;; which does allow improper lists. We take a different approach here.
 
-;; Whenver you want an improper list in the context of a logic program,
+;; Whenever you want an improper list in the context of a logic program,
 ;; you can signify it with the 'dot' sigil. For example: ~[1 2 dot a]~.
 ;; This is meant to evoke the Scheme and Common LISP notation for
 ;; improper lists: ~(1 2 . 3)~. This will typically be transparent to the
@@ -58,7 +58,7 @@
                 (unify (rest u) (rest v))))))
 
 ;; Next, we need to extend the reifier. When calling reify-s, we need to
-;; look for occurences of logic variables inside of given paramter. This
+;; look for occurrences of logic variables inside of given parameter. This
 ;; extends reify-s to make a recursive call on the first element of the
 ;; sequence, then on the remaining elements.
 
@@ -88,29 +88,35 @@
 
       :default v)))
 
-;; Sequence relations
+;; Sequence goals
+;; Now we can define some user-level goals for sequences. First,
+;; conso says that /out/ is the sequence with the head /first/ and the
+;; tail /rest/.
 
 (defn conso [first rest out]
   (if (lvar? rest)
     (=== [first dot rest] out)
     (=== (cons first rest) out)))
 
-(defn firsto
-  "Relation: *out* is an LList whose first element is *first*"
-  [first out]
+;; /firsto/ simply says that /first/ is the head of /out/.
+
+(defn firsto [first out]
   (fresh [rest]
     (conso first rest out)))
 
-(defn resto
-  "Relation: *out* is an LList whose cdr is *rest*"
-  [rest out]
+;; And /resto/, likewise, says that /rest/ is the tail of /out/.
+
+(defn resto [rest out]
   (fresh [first]
     (conso first rest out)))
 
-(defn emptyo
-  "Relation: *x* is the empty LList"
-  [x]
-  (=== '() x))
+;; /emptyo/ is a way to say that /s/ must be an empty sequence.
+
+(defn emptyo [s]
+  (=== '() s))
+
+;; /appendo/ says that /out/ is the result of appending the sequence parameters
+;; /seq1/ and /seq1/.
 
 (defn appendo [seq1 seq2 out]
   (conde
