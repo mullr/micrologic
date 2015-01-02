@@ -27,7 +27,7 @@ information, see the bibliography at the end.
 ** Logic Variables
 The purpose of a logic program is to takes an expression with some
 unknowns in it and try to find values for those unknowns that make the
-espression true. Here's an example logic program in English with an
+expression true. Here's an example logic program in English with an
 unknown /x/:
 
 #+begin_src
@@ -55,7 +55,7 @@ later on.
 ** Substitutions and Walking
 In the course of running a logic program, we'll be deciding on values
 for logic variables and testing those values against other parts of
-the program to see if it meets all the neccessary criteria. The values
+the program to see if it meets all the necessary criteria. The values
 are stored in a data structure called a substitution map (/s-map/ for
 short).
 
@@ -156,7 +156,7 @@ for simplicity.
 and /v/, and an existing substitution map /s-map/, ~unify~ produces a
 new substitution map with mappings that will make u and v equal.
 
-A term is simply somthing you can pass to unify. This is indeed a
+A term is simply something you can pass to unify. This is indeed a
 circular definition. But really, you can pass anything you like as a
 term. It's just that some types of terms have specialized behavior.
 LVars do, for example. When we add support for sequences, they will as
@@ -192,7 +192,7 @@ Let's walk through some examples.
     nil
   #+end_src
 
-- When there's something un-related in the substitution map,
+- When there's something unrelated in the substitution map,
   we'll just add to it:
   #+begin_src clojure
     > (unify (lvar 0) "banana"
@@ -272,7 +272,7 @@ Now, let's consider this logic program in particular:
 
 Clearly there are an infinite number of substitution maps that make
 this program true - ~{(lvar 0) 0}~, ~{(lvar 0) 1}~, ~{(lvar 0) 2}~,
-and so on. That is, it has an inifinitely large set of solutions.
+and so on. That is, it has an infinitely large set of solutions.
 
 Here's another motivating example:
 #+begin_src
@@ -283,7 +283,7 @@ As you can probably guess from the name, this is a program which has
 no valid output. But it's a program you can write all the same, and it
 will take forever to produce no output. The example is contrived, but
 you can get into such a situation surprisingly (distressingly) easily
-when writing actual progrems.
+when writing actual programs.
 
 So we now know that:
 1. There are logic programs with infinitely many solutions
@@ -411,8 +411,8 @@ An imaginary repl session may make this clearer:
 
 The basic concept here is pretty straightforward: make a new thunk
 which, when executed later, will do some work and then mapcat ~g~ over
-the result.  The thunk is used instead of just exeuting the function
-directly because ~mapcat-stream~ may be used inside a recusive
+the result.  The thunk is used instead of just executing the function
+directly because ~mapcat-stream~ may be used inside a recursive
 function, which might diverge. This won't keep the function from
 diverging, but it will allow its execution to be interleaved with the
 rest of the program.
@@ -504,7 +504,7 @@ convenient way to do this, see the /fresh/ macro below.
 #+end_src
 
 One way to combine smaller goals into a new one is with logical
-disjuction, the 'or' operation. ~ldisj~ which constructs a new goal
+disjunction, the 'or' operation. ~ldisj~ which constructs a new goal
 that succeeds whenever /goal-1/ or /goal-2/ succeeds.  Another way to
 look at this is that it interleaves the results of /goal-1/ and
 /goal-2/, using ~merge-streams~.
@@ -532,7 +532,7 @@ At this point, we have everything we need to do logic programming!
 But it's very inconvenient. Here we define some syntax to make the
 task more bearable.
 
-** Auxilliary macros
+** Auxiliary macros
 /delay-goal/ will wrap the given goal in a new one which, when
 executed, simply returns a thunk that wraps the goal. Recall that goal
 functions return streams, and that a function is a valid kind of
@@ -649,7 +649,7 @@ of ands' and to get used to the name)
 #+end_src
 
 The ~fresh~ macro allocates some new logic variables and makes them
-available in its boday. Really, it's a more convenient syntax for
+available in its body. Really, it's a more convenient syntax for
 ~call-fresh~. ~fresh~ lets you declare multiple logic variables at
 once, and it takes care of the function declaration mechanics for you.
 
@@ -692,8 +692,8 @@ Finally, the run* macro gives us a lazy sequence of readable (reified) values.
        (map reify-state-first-var)))
 #+end_src
 
-The first parameter is a vector of logic varialbes which will be
-alocated and made available in the body; the first of these is reified
+The first parameter is a vector of logic variables which will be
+allocated and made available in the body; the first of these is reified
 and returned as a lazy sequence. This is called the 'query variable',
 and is often named 'q' by convention.
 
@@ -739,7 +739,7 @@ Since Clojure disallows putting non-list items in linked-list cells
 it. core.logic solves this problem by defining its own LCons data type
 which does allow improper lists. We take a different approach here.
 
-Whenver you want an improper list in the context of a logic program,
+Whenever you want an improper list in the context of a logic program,
 you can signify it with the 'dot' sigil. For example: ~[1 2 dot a]~.
 This is meant to evoke the Scheme and Common LISP notation for
 improper lists: ~(1 2 . 3)~. This will typically be transparent to the
@@ -786,7 +786,7 @@ will recurse down to ~(=== [2 3] [. a])~. Detecting that, we can call
 #+end_src
 
 Next, we need to extend the reifier. When calling reify-s, we need to
-look for occurences of logic variables inside of given paramter. This
+look for occurrences of logic variables inside of given parameter. This
 extends reify-s to make a recursive call on the first element of the
 sequence, then on the remaining elements.
 
@@ -897,7 +897,7 @@ will find all the ways you can append two lists to create ~[1 2 3 4 5]~:
 Polymorphic dispatch via protocols is used in place of ~cond~ with
 type checks, where possible.
 
-Clojure-native datatypes are used where appropriate
+Clojure-native data types are used where appropriate
 - The substitution map is a clojure map instead of an alist
 - There is an LVar defrecord, instead of using a vector of the lvar id.
 - We have an explicit StreamNode data type, rather building on the
