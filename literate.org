@@ -322,8 +322,8 @@ There are three kinds of lazy streams:
 
 A mature stream is one in which the first element of the stream has a
 definite value that has already been computed. An immature stream, on
-the other hand, does not yet have a computed head. Instead if has a
-function which it can used to compute a mature (or empty) stream when
+the other hand, does not yet have a computed head. Instead it has a
+function which you can use to compute a mature (or empty) stream when
 you need it.
 
 You can manipulate a stream with these functions:
