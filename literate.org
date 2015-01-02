@@ -217,19 +217,17 @@ Here's the implementation of ~unify~:
     (let [u (walk u s-map),    v (walk v s-map)
           u-is-lvar (lvar? u), v-is-lvar (lvar? v)]
       (cond
-        ;; Unifying two lvars adds no information to the substitution map
-        (and u-is-lvar v-is-lvar (= u v)) s-map
+        ;; Terms that walk to equal values always unify, but add nothing
+        ;; to the substitution map
+        (= u v) s-map
 
-        ;; Unifying an lvar with some other value creates a new entry in
+        ;; Unifying an lvar term with some other value creates a new entry in
         ;; the substitution map
         u-is-lvar (add-substitution s-map u v)
         v-is-lvar (add-substitution s-map v u)
 
-        ;; two non-lvar values always unify if they're equal
-        (= u v) s-map
-
-        ;; Unifying two non-lvars is delegated to the polymorphic
-        ;; unify-terms function, from IUnifyTerms.
+        ;; Unifying two terms that walk to non-lvar values is delegated
+        ;; to the polymorphic unify-terms function, from IUnifyTerms.
         :default (unify-terms u v s-map))))
 #+end_src
 
