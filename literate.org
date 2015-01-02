@@ -252,7 +252,7 @@ Here's the implementation of ~unify~:
 
 Here are the basic IUnifyTerms definitions for Object and nil.  If we
 get dispatched to either of these definitions, we know that neither u
-or v walks to an lvar, that the values aren't equal, and we aren't
+nor or v walks to an lvar, that the values aren't equal, and we aren't
 doing some kind of extended unification that's defined
 elsewhere. Thus, they must not unify.
 
