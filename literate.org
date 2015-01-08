@@ -17,6 +17,11 @@ sufficient.
 This code was derived substantially from microKanren; for much more
 information, see the bibliography at the end.
 
+In the (not entirely unlikely) event that you find errors in this
+document, please raise them as issues at
+https://github.com/mullr/micrologic/issues. There will be no
+power-of-two reward checks, merely my warmest of thanks.
+
 * Functional Core
 ** COMMENT Header
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :noweb yes :comments org
