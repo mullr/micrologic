@@ -30,7 +30,7 @@ power-of-two reward checks, merely my warmest of thanks.
 #+end_src
 
 ** Logic Variables
-The purpose of a logic program is to takes an expression with some
+The purpose of a logic program is to take an expression with some
 unknowns in it and try to find values for those unknowns that make the
 expression true. Here's an example logic program in English with an
 unknown /x/:
