@@ -1,5 +1,5 @@
 #+title: microLogic
-#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="http://thomasf.github.io/solarized-css/solarized-light.min.css" />
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="style.css" />
 
 * Introduction
 This is a literate Clojure implementation of miniKanren, a logic
