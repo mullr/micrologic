@@ -5,7 +5,7 @@
 This is a literate Clojure implementation of miniKanren, a logic
 programming system which can be embedded in functional programming
 languages.  It's meant to be an introduction to the inner workings of
-miniKanren and and of core.logic, helping you to understand more
+miniKanren and of core.logic, helping you to understand more
 completely what's happening when you use those systems.
 
 For maximum enjoyment, the reader should be familiar with Clojure, and
