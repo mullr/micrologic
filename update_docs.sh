@@ -1,5 +1,5 @@
 #!/bin/sh
-emacs -eval '(progn (find-file "literate.org") (org-html-export-to-html))' -kill
+emacs -eval "(progn (load-theme 'spacemacs-light) (find-file \"literate.org\") (org-html-export-to-html))" -kill
 mv literate.html new.html
 
 git co gh-pages
