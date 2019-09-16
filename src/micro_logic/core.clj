@@ -5,7 +5,7 @@
   (:require [micro-logic.protocols :refer :all]))
 
 ;; Logic Variables
-;; The purpose of a logic program is to takes an expression with some
+;; The purpose of a logic program is to take an expression with some
 ;; unknowns in it and try to find values for those unknowns that make the
 ;; expression true. Here's an example logic program in English with an
 ;; unknown /x/:
@@ -81,7 +81,7 @@
 
 ;; Here are the basic IUnifyTerms definitions for Object and nil.  If we
 ;; get dispatched to either of these definitions, we know that neither u
-;; or v walks to an lvar, that the values aren't equal, and we aren't
+;; nor or v walks to an lvar, that the values aren't equal, and we aren't
 ;; doing some kind of extended unification that's defined
 ;; elsewhere. Thus, they must not unify.
 
