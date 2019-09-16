@@ -565,8 +565,8 @@ This is especially useful when defining recursive goals.
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defmacro delay-goal [goal]
-    `(fn delayed-goal-outer [state#]
-       (fn delayed-goal-inner [] (~goal state#))))
+    `(fn ~'delayed-goal-outer [state#]
+       (fn ~'delayed-goal-inner [] (~goal state#))))
 #+end_src
 
 We also define extended versions of the ~ldisj~ and ~lconj~

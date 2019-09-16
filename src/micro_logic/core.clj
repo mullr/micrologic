@@ -209,8 +209,8 @@
 ;; This is especially useful when defining recursive goals.
 
 (defmacro delay-goal [goal]
-  `(fn delayed-goal-outer [state#]
-     (fn delayed-goal-inner [] (~goal state#))))
+  `(fn ~'delayed-goal-outer [state#]
+     (fn ~'delayed-goal-inner [] (~goal state#))))
 
 ;; We also define extended versions of the ~ldisj~ and ~lconj~
 ;; functions. These handle multiple goal parameters, instead of just
