@@ -94,7 +94,7 @@ One substitution map which makes this expression true is
 *** Adding entries
 Although a substitution map is nothing but a regular clojure map, we
 need some utility functions to deal with some subtleties of its behavior.
-The first is for adding add new entries:
+The first is for adding new entries:
 
 #+begin_src clojure :tangle "src/micro_logic/core.clj" :comments org
   (defn add-substitution [s-map lvar value]
